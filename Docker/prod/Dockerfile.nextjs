@@ -1,0 +1,124 @@
+# ==============================================================================
+# VUTEQ Warehouse Scanning System - Next.js Frontend Dockerfile (Production)
+# ==============================================================================
+# Author: Hassan
+# Date: 2025-10-20
+# Description: Multi-stage Docker build for Next.js frontend application
+#              Production stage: Optimized build with minimal footprint
+# ==============================================================================
+
+# ==============================================================================
+# STAGE 1: Base Dependencies
+# ==============================================================================
+# This stage installs all dependencies needed for building
+FROM node:20-alpine AS base
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for node-gyp and native modules
+RUN apk add --no-cache \
+    libc6-compat \
+    python3 \
+    make \
+    g++
+
+# Copy package files
+COPY package*.json ./
+
+# ==============================================================================
+# STAGE 2: Production Dependencies
+# ==============================================================================
+# This stage installs only production dependencies for smaller image
+FROM base AS dependencies-prod
+
+# Install only production dependencies
+RUN npm ci --omit=dev && \
+    npm cache clean --force
+
+# ==============================================================================
+# STAGE 3: Builder
+# ==============================================================================
+# This stage builds the Next.js application for production
+FROM base AS builder
+
+WORKDIR /app
+
+# Copy production dependencies
+COPY --from=dependencies-prod /app/node_modules ./node_modules
+
+# Copy application source
+COPY . ./
+
+# Set build-time environment variables
+ARG NEXT_PUBLIC_API_URL
+ARG BUILDTIME
+ARG VERSION
+
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
+# Build the Next.js application
+# This creates an optimized production build in .next directory
+RUN npm run build && \
+    npm prune --production
+
+# ==============================================================================
+# STAGE 4: Production Runtime
+# ==============================================================================
+# Final stage - minimal production image with only runtime dependencies
+FROM node:20-alpine AS production
+
+WORKDIR /app
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
+
+# Copy necessary files from builder stage
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# Set ownership to non-root user
+RUN chown -R nextjs:nodejs /app
+
+# Switch to non-root user
+USER nextjs
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+
+# Expose port
+EXPOSE 3000
+
+# Health check for production
+HEALTHCHECK --interval=20s --timeout=10s --start-period=60s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Add metadata labels
+LABEL maintainer="Hassan"
+LABEL application="VUTEQ Warehouse Scanning System"
+LABEL component="frontend"
+LABEL version="${VERSION}"
+LABEL build-date="${BUILDTIME}"
+
+# Start production server
+CMD ["node", "server.js"]
+
+# ==============================================================================
+# BUILD INSTRUCTIONS
+# ==============================================================================
+# Production:
+#   docker build -f Dockerfile.nextjs --target production \
+#     --build-arg NEXT_PUBLIC_API_URL=https://api.vuteq.com \
+#     --build-arg VERSION=1.0.0 \
+#     --build-arg BUILDTIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+#     -t vuteq-frontend:latest .
+#
+# Run standalone:
+#   docker run -p 3000:3000 -e NEXT_PUBLIC_API_URL=http://api:5000 vuteq-frontend:latest
+# ==============================================================================

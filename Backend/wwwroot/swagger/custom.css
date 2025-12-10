@@ -1,0 +1,57 @@
+/* Author: Hassan
+ * Date: 2025-12-01
+ * Description: VUTEQ Scanner API - Custom Swagger Branding
+ */
+
+/* Style topbar with VUTEQ Navy */
+.swagger-ui .topbar {
+    background-color: #253262 !important;
+    padding: 12px 0;
+}
+
+/* Style the topbar wrapper for proper alignment */
+.swagger-ui .topbar-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+/* Style the link container */
+.swagger-ui .topbar-wrapper .link {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+/* Add VUTEQ text before the logo */
+.swagger-ui .topbar-wrapper .link::before {
+    content: 'VUTEQ\AScanner APIs';
+    white-space: pre-line;
+    font-size: 16px;
+    font-weight: 600;
+    color: white;
+    line-height: 1.2;
+}
+
+/* Style the VUTEQ logo */
+.swagger-ui .topbar-wrapper img[alt="Swagger UI"] {
+    content: url('/swagger/vuteq-logo.svg');
+    height: 40px;
+    width: auto;
+}
+
+/* API info section styling */
+.swagger-ui .info .title {
+    color: #253262;
+}
+
+/* Accent color for buttons */
+.swagger-ui .btn.execute {
+    background-color: #253262 !important;
+    border-color: #253262 !important;
+}
+
+.swagger-ui .btn.execute:hover {
+    background-color: #D2312E !important;
+    border-color: #D2312E !important;
+}

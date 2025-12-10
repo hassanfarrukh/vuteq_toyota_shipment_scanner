@@ -1,0 +1,75 @@
+# ==============================================================================
+# VUTEQ Warehouse Scanning System - Next.js Frontend Dockerfile (Development)
+# ==============================================================================
+# Author: Hassan
+# Date: 2025-11-23
+# Description: Development-optimized Docker build for Next.js frontend with
+#              hot-reload, debugging support, and fast refresh enabled
+# ==============================================================================
+
+# ==============================================================================
+# STAGE 1: Base Dependencies
+# ==============================================================================
+# This stage installs all dependencies needed for development
+FROM node:20-alpine AS base
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for node-gyp and native modules
+RUN apk add --no-cache \
+    libc6-compat \
+    python3 \
+    make \
+    g++
+
+# Copy package files
+COPY package*.json ./
+
+# ==============================================================================
+# STAGE 2: Development Environment
+# ==============================================================================
+# This stage is used for local development with hot-reload
+FROM node:20-alpine AS development
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apk add --no-cache \
+    libc6-compat \
+    curl
+
+# Copy package files
+COPY package*.json ./
+
+# Install ALL dependencies (including devDependencies)
+RUN npm ci --include=dev
+
+# Copy application source code
+# Note: In docker-compose.dev.yml, we mount the source as volume for hot-reload
+COPY . ./
+
+# Set environment variables
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Start development server with hot-reload
+CMD ["npm", "run", "dev"]
+
+# ==============================================================================
+# BUILD INSTRUCTIONS
+# ==============================================================================
+# Development:
+#   docker build -f Dockerfiles/Dockerfile.nextjs --target development -t vuteq-frontend:dev .
+#
+# Run standalone:
+#   docker run -p 3000:3000 -v $(pwd):/app vuteq-frontend:dev
+# ==============================================================================

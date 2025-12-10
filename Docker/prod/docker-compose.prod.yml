@@ -1,0 +1,396 @@
+# ==============================================================================
+# VUTEQ Warehouse Scanning System - Production Environment
+# ==============================================================================
+# Author: Hassan
+# Date: 2025-10-20
+# Description: Production-grade Docker Compose configuration with health checks,
+#              resource limits, auto-restart, and 99% uptime configuration.
+#              Supports 50+ concurrent users across 6 manufacturing sites.
+# ==============================================================================
+
+version: '3.8'
+
+# ==============================================================================
+# SERVICES CONFIGURATION
+# ==============================================================================
+services:
+
+  # ----------------------------------------------------------------------------
+  # SQL Server Database Service - Production Configuration
+  # ----------------------------------------------------------------------------
+  # Enterprise-grade database with resource limits and optimization
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: vuteq-sqlserver-prod
+    hostname: sqlserver-prod
+
+    # Environment configuration
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "${DB_SA_PASSWORD}"  # Load from .env file
+      MSSQL_PID: "Standard"
+      MSSQL_TCP_PORT: 1433
+      MSSQL_COLLATION: "SQL_Latin1_General_CP1_CI_AS"
+
+      # Production optimizations
+      MSSQL_MEMORY_LIMIT_MB: 4096
+      MSSQL_AGENT_ENABLED: "true"
+
+    # Resource limits for production stability
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+    # Internal port only - no external exposure for security
+    expose:
+      - "1433"
+
+    # Persistent volume with backup support
+    volumes:
+      - sqlserver-prod-data:/var/opt/mssql/data
+      - sqlserver-prod-log:/var/opt/mssql/log
+      - sqlserver-prod-backup:/var/opt/mssql/backup
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+
+    # Enhanced health check for production
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P ${DB_SA_PASSWORD} -Q 'SELECT 1' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+    # Always restart for high availability
+    restart: always
+
+    # Network configuration
+    networks:
+      - vuteq-backend
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------------------------------------------------------
+  # ASP.NET Core Backend API Service - Production Configuration
+  # ----------------------------------------------------------------------------
+  # High-performance API with load balancing support
+  api:
+    build:
+      context: ../../../
+      dockerfile: FromClaude/Codes/Docker/production/Dockerfile.api
+      target: production
+      args:
+        BUILDTIME: "${BUILD_TIME}"
+        VERSION: "${APP_VERSION}"
+
+    container_name: vuteq-api-prod
+    hostname: api-prod
+
+    # Environment variables from .env file
+    environment:
+      # ASP.NET Core configuration
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:5000"
+
+      # Database connection
+      ConnectionStrings__DefaultConnection: "${DB_CONNECTION_STRING}"
+
+      # JWT Configuration (production keys)
+      JWT__Secret: "${JWT_SECRET}"
+      JWT__Issuer: "${JWT_ISSUER}"
+      JWT__Audience: "${JWT_AUDIENCE}"
+      JWT__ExpiryMinutes: "${JWT_EXPIRY_MINUTES}"
+
+      # Toyota API Configuration - Production
+      ToyotaAPI__PROD__BaseUrl: "${TOYOTA_API_PROD_URL}"
+      ToyotaAPI__PROD__ClientId: "${TOYOTA_API_PROD_CLIENT_ID}"
+      ToyotaAPI__PROD__ClientSecret: "${TOYOTA_API_PROD_CLIENT_SECRET}"
+      ToyotaAPI__PROD__TokenEndpoint: "/oauth/token"
+      ToyotaAPI__PROD__Timeout: "30"
+      ToyotaAPI__PROD__RetryCount: "3"
+
+      # Toyota API Configuration - QA (fallback)
+      ToyotaAPI__QA__BaseUrl: "${TOYOTA_API_QA_URL}"
+      ToyotaAPI__QA__ClientId: "${TOYOTA_API_QA_CLIENT_ID}"
+      ToyotaAPI__QA__ClientSecret: "${TOYOTA_API_QA_CLIENT_SECRET}"
+
+      # Multi-Site Configuration (6 locations)
+      MultiSite__Enabled: "true"
+      MultiSite__DefaultSiteCode: "${DEFAULT_SITE_CODE}"
+      MultiSite__Sites__0__Code: "TMH"
+      MultiSite__Sites__0__Name: "Toyota Motor Manufacturing Mississippi"
+      MultiSite__Sites__0__DatabaseName: "VuteqWMS_TMH"
+      MultiSite__Sites__1__Code: "TMI"
+      MultiSite__Sites__1__Name: "Toyota Motor Manufacturing Indiana"
+      MultiSite__Sites__1__DatabaseName: "VuteqWMS_TMI"
+      MultiSite__Sites__2__Code: "TMK"
+      MultiSite__Sites__2__Name: "Toyota Motor Manufacturing Kentucky"
+      MultiSite__Sites__2__DatabaseName: "VuteqWMS_TMK"
+      MultiSite__Sites__3__Code: "TMT"
+      MultiSite__Sites__3__Name: "Toyota Motor Manufacturing Texas"
+      MultiSite__Sites__3__DatabaseName: "VuteqWMS_TMT"
+      MultiSite__Sites__4__Code: "TMBC"
+      MultiSite__Sites__4__Name: "Toyota Motor Manufacturing Canada"
+      MultiSite__Sites__4__DatabaseName: "VuteqWMS_TMBC"
+      MultiSite__Sites__5__Code: "TMMWV"
+      MultiSite__Sites__5__Name: "Toyota Motor Manufacturing West Virginia"
+      MultiSite__Sites__5__DatabaseName: "VuteqWMS_TMMWV"
+
+      # Performance tuning
+      ASPNETCORE_THREADPOOL_MIN_THREADS: "100"
+      ASPNETCORE_THREADPOOL_MAX_THREADS: "500"
+
+      # Logging configuration - production level
+      Logging__LogLevel__Default: "Warning"
+      Logging__LogLevel__Microsoft: "Warning"
+      Logging__LogLevel__Microsoft.Hosting.Lifetime: "Information"
+
+      # CORS configuration
+      CORS__AllowedOrigins: "${CORS_ALLOWED_ORIGINS}"
+
+      # Health check configuration
+      HealthChecks__Enabled: "true"
+      HealthChecks__Timeout: "30"
+
+    # Resource limits for 50+ concurrent users
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      # Scale for high availability (requires Docker Swarm or Kubernetes)
+      replicas: 2
+
+    # Internal port only
+    expose:
+      - "5000"
+
+    # Wait for database to be ready
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+
+    # Comprehensive health check
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Always restart for high availability
+    restart: always
+
+    # Network configuration
+    networks:
+      - vuteq-backend
+      - vuteq-frontend
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ----------------------------------------------------------------------------
+  # Next.js Frontend Application Service - Production Configuration
+  # ----------------------------------------------------------------------------
+  # Optimized frontend with static asset serving
+  frontend:
+    build:
+      context: ../ScannerApp
+      dockerfile: ../Docker/production/Dockerfile.nextjs
+      target: production
+      args:
+        NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL}"
+        BUILDTIME: "${BUILD_TIME}"
+        VERSION: "${APP_VERSION}"
+
+    container_name: vuteq-frontend-prod
+    hostname: frontend-prod
+
+    # Environment variables
+    environment:
+      NODE_ENV: "production"
+      NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL}"
+      NEXT_PUBLIC_MULTI_SITE_ENABLED: "true"
+      NEXT_PUBLIC_DEFAULT_SITE: "${DEFAULT_SITE_CODE}"
+      NEXT_PUBLIC_ENABLE_DEBUG: "false"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      # Scale for load balancing
+      replicas: 2
+
+    # Internal port only (reverse proxy will handle external)
+    expose:
+      - "3000"
+
+    # Wait for API to be ready
+    depends_on:
+      api:
+        condition: service_healthy
+
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Always restart for high availability
+    restart: always
+
+    # Network configuration
+    networks:
+      - vuteq-frontend
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ----------------------------------------------------------------------------
+  # Nginx Reverse Proxy - Load Balancer and SSL Termination
+  # ----------------------------------------------------------------------------
+  # High-performance reverse proxy for load balancing and security
+  nginx:
+    image: nginx:alpine
+    container_name: vuteq-nginx-prod
+    hostname: nginx-prod
+
+    # Port mapping - external access
+    ports:
+      - "80:80"
+      - "443:443"
+
+    # Nginx configuration
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx-cache:/var/cache/nginx
+      - nginx-logs:/var/log/nginx
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    # Wait for services
+    depends_on:
+      frontend:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+
+    # Always restart
+    restart: always
+
+    # Network configuration
+    networks:
+      - vuteq-frontend
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+# ==============================================================================
+# VOLUMES CONFIGURATION
+# ==============================================================================
+volumes:
+  # SQL Server volumes with backup support
+  sqlserver-prod-data:
+    driver: local
+    name: vuteq-sqlserver-prod-data
+
+  sqlserver-prod-log:
+    driver: local
+    name: vuteq-sqlserver-prod-log
+
+  sqlserver-prod-backup:
+    driver: local
+    name: vuteq-sqlserver-prod-backup
+
+  # Nginx cache and logs
+  nginx-cache:
+    driver: local
+    name: vuteq-nginx-cache
+
+  nginx-logs:
+    driver: local
+    name: vuteq-nginx-logs
+
+# ==============================================================================
+# NETWORKS CONFIGURATION
+# ==============================================================================
+# Separate networks for security isolation
+networks:
+  # Backend network (database and API only)
+  vuteq-backend:
+    driver: bridge
+    name: vuteq-prod-backend
+    internal: true  # No external access
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+
+  # Frontend network (API, frontend, and proxy)
+  vuteq-frontend:
+    driver: bridge
+    name: vuteq-prod-frontend
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24

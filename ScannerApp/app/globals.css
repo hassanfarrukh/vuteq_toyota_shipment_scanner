@@ -1,0 +1,425 @@
+/**
+ * Global Styles
+ * Author: Hassan
+ * Date: 2025-10-20
+ * Updated: 2025-10-21 - Fixed viewport gaps and scrollbar issues
+ * Updated: 2025-10-21 - Restored scrolling capability for all pages except login
+ * Updated: 2025-10-29 - CLEANUP: Removed all duplicate Font Awesome CSS (Hassan)
+ *                       All Font Awesome styling now loaded exclusively from public/fontawesome/css/all.css
+ *                       This file now contains only VUTEQ-specific customizations
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Reset for full viewport coverage - Allow scrolling by default */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto; /* Changed from hidden to auto - allows scrolling when content overflows */
+}
+
+/* ===== Font Awesome 7 Pro Configuration ===== */
+/* Author: Hassan, Date: 2025-10-29 */
+/* All Font Awesome styling is loaded from public/fontawesome/css/all.css */
+/* No duplicate CSS needed - all.css provides complete Font Awesome functionality */
+
+/* ===== BUGFIX: Missing Font Awesome Font Weights ===== */
+/* Author: Hassan, Date: 2025-10-29 */
+/*
+ * ISSUE: all.css is missing @font-face declarations for various font weights
+ * This section loads all available font files for complete Font Awesome support
+ */
+
+/* === Solid Weight 900 === */
+@font-face {
+  font-family: "Font Awesome 7 Free";
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-solid-900.woff2) format("woff2");
+}
+
+/* === Regular Weight 400 === */
+@font-face {
+  font-family: "Font Awesome 7 Free";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-regular-400.woff2) format("woff2");
+}
+
+/* === Light Weight 300 === */
+@font-face {
+  font-family: "Font Awesome 7 Pro";
+  font-style: normal;
+  font-weight: 300;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-light-300.woff2) format("woff2");
+}
+
+/* === Thin Weight 100 === */
+@font-face {
+  font-family: "Font Awesome 7 Pro";
+  font-style: normal;
+  font-weight: 100;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-thin-100.woff2) format("woff2");
+}
+
+/* === Duotone Weight 900 === */
+@font-face {
+  font-family: "Font Awesome 7 Duotone";
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-duotone-900.woff2) format("woff2");
+}
+
+/* === Duotone Regular Weight 400 === */
+@font-face {
+  font-family: "Font Awesome 7 Duotone";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-duotone-regular-400.woff2) format("woff2");
+}
+
+/* === Duotone Light Weight 300 === */
+@font-face {
+  font-family: "Font Awesome 7 Duotone";
+  font-style: normal;
+  font-weight: 300;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-duotone-light-300.woff2) format("woff2");
+}
+
+/* === Duotone Thin Weight 100 === */
+@font-face {
+  font-family: "Font Awesome 7 Duotone";
+  font-style: normal;
+  font-weight: 100;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-duotone-thin-100.woff2) format("woff2");
+}
+
+/* === Brands Weight 400 === */
+@font-face {
+  font-family: "Font Awesome 7 Brands";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-brands-400.woff2) format("woff2");
+}
+
+/* === Sharp Solid Weight 900 === */
+@font-face {
+  font-family: "Font Awesome 7 Sharp";
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-sharp-solid-900.woff2) format("woff2");
+}
+
+/* === Sharp Regular Weight 400 === */
+@font-face {
+  font-family: "Font Awesome 7 Sharp";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-sharp-regular-400.woff2) format("woff2");
+}
+
+/* === Sharp Light Weight 300 === */
+@font-face {
+  font-family: "Font Awesome 7 Sharp";
+  font-style: normal;
+  font-weight: 300;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-sharp-light-300.woff2) format("woff2");
+}
+
+/* === Sharp Thin Weight 100 === */
+@font-face {
+  font-family: "Font Awesome 7 Sharp";
+  font-style: normal;
+  font-weight: 100;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-sharp-thin-100.woff2) format("woff2");
+}
+
+/* === Sharp Duotone Solid Weight 900 === */
+@font-face {
+  font-family: "Font Awesome 7 Sharp Duotone";
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-sharp-duotone-solid-900.woff2) format("woff2");
+}
+
+/* === Sharp Duotone Regular Weight 400 === */
+@font-face {
+  font-family: "Font Awesome 7 Sharp Duotone";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-sharp-duotone-regular-400.woff2) format("woff2");
+}
+
+/* === Sharp Duotone Light Weight 300 === */
+@font-face {
+  font-family: "Font Awesome 7 Sharp Duotone";
+  font-style: normal;
+  font-weight: 300;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-sharp-duotone-light-300.woff2) format("woff2");
+}
+
+/* === Sharp Duotone Thin Weight 100 === */
+@font-face {
+  font-family: "Font Awesome 7 Sharp Duotone";
+  font-style: normal;
+  font-weight: 100;
+  font-display: block;
+  src: url(../public/fontawesome/webfonts/fa-sharp-duotone-thin-100.woff2) format("woff2");
+}
+
+/* === CSS Rules for Font Weight Classes === */
+
+/* Thin weight (100) */
+.fa-thin {
+  --fa-style: 100;
+  font-weight: 100 !important;
+}
+
+/* Light weight (300) */
+.fa-light {
+  --fa-style: 300;
+  font-weight: 300 !important;
+}
+
+/* Duotone with thin weight */
+.fa-duotone.fa-thin,
+.fad.fa-thin {
+  --fa-style: 100;
+  font-weight: 100 !important;
+}
+
+/* Duotone with light weight */
+.fa-duotone.fa-light,
+.fad.fa-light {
+  --fa-style: 300;
+  font-weight: 300 !important;
+}
+
+/* Duotone with regular weight */
+.fa-duotone.fa-regular,
+.fad.fa-regular {
+  --fa-style: 400;
+  font-weight: 400 !important;
+}
+
+/* Sharp with thin weight */
+.fa-sharp.fa-thin {
+  --fa-style: 100;
+  font-weight: 100 !important;
+}
+
+/* Sharp with light weight */
+.fa-sharp.fa-light {
+  --fa-style: 300;
+  font-weight: 300 !important;
+}
+
+/* Sharp with regular weight */
+.fa-sharp.fa-regular {
+  --fa-style: 400;
+  font-weight: 400 !important;
+}
+
+/* Sharp Duotone with thin weight */
+.fa-sharp.fa-duotone.fa-thin {
+  --fa-style: 100;
+  font-weight: 100 !important;
+}
+
+/* Sharp Duotone with light weight */
+.fa-sharp.fa-duotone.fa-light {
+  --fa-style: 300;
+  font-weight: 300 !important;
+}
+
+/* Sharp Duotone with regular weight */
+.fa-sharp.fa-duotone.fa-regular {
+  --fa-style: 400;
+  font-weight: 400 !important;
+}
+
+@layer base {
+  :root {
+    --color-primary: 14 165 233;
+    --color-border: 229 231 235; /* gray-200 for light borders */
+    --color-background: 249 250 251; /* gray-50 for page background */
+    --color-foreground: 17 24 39; /* gray-900 for text */
+  }
+
+  * {
+    border-color: rgb(var(--color-border));
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Prevent text selection on mobile for better UX */
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  /* Ensure proper touch target sizes */
+  button,
+  a,
+  input[type='button'],
+  input[type='submit'] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Disable zoom on input focus (for better scanner UX) */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+@layer utilities {
+  .active\:scale-98:active {
+    transform: scale(0.98);
+  }
+
+  .container {
+    @apply mx-auto px-4 max-w-7xl;
+  }
+
+  /* Safe area support for mobile devices */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* ===== SlideOutPanel Animations ===== */
+/* Author: Hassan, Date: 2025-10-29 */
+/* Updated: 2025-11-05 - Added closing animations */
+/* Smooth animations for slide-out panel open/close */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+/* ===== VUTEQ Accessibility: Reduced Motion Support ===== */
+/* Author: Hassan, Date: 2025-10-21 */
+/* Updated: 2025-11-05 - Added closing animations support */
+/* Disable animations for users who prefer reduced motion (vestibular disorders, motion sensitivity) */
+@media (prefers-reduced-motion: reduce) {
+  /* Disable blob animations */
+  .animate-blob {
+    animation: none !important;
+  }
+
+  /* Disable slide-out panel animations */
+  @keyframes fadeIn {
+    from, to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeOut {
+    from, to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideInRight {
+    from, to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideOutRight {
+    from, to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  /* Reduce all animations to minimal duration */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

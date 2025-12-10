@@ -1,0 +1,60 @@
+# ==============================================================================
+# VUTEQ Warehouse Scanning System - ASP.NET Core API Dockerfile (Development)
+# ==============================================================================
+# Author: Hassan
+# Date: 2025-11-23
+# Description: Development-optimized Docker build for ASP.NET Core Web API
+#              with debug support, hot-reload, and development tools
+# ==============================================================================
+
+# ==============================================================================
+# STAGE 1: Development Runtime
+# ==============================================================================
+# This stage includes the SDK for development and debugging
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS development
+
+WORKDIR /app
+
+# Install curl for health checks, Tesseract OCR, and required libraries
+RUN apt-get update && \
+    apt-get install -y curl tesseract-ocr tesseract-ocr-eng libgdiplus libc6-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set Tesseract data path
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
+
+# Copy project files
+COPY *.csproj ./
+
+# Restore dependencies
+RUN dotnet restore
+
+# Copy source code
+# Note: In docker-compose.dev.yml, we mount source as volume for hot-reload
+COPY . ./
+
+# Set environment variables for development
+ENV ASPNETCORE_ENVIRONMENT=Development
+ENV ASPNETCORE_URLS=http://+:5000
+ENV DOTNET_USE_POLLING_FILE_WATCHER=true
+
+# Expose ports
+EXPOSE 5000
+EXPOSE 5001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+# Run with watch mode for hot-reload
+CMD ["dotnet", "watch", "run", "--no-restore"]
+
+# ==============================================================================
+# BUILD INSTRUCTIONS
+# ==============================================================================
+# Development:
+#   docker build -f Dockerfiles/Dockerfile.api --target development -t vuteq-api:dev .
+#
+# Run standalone:
+#   docker run -p 5000:5000 -v $(pwd)/Backend:/app vuteq-api:dev
+# ==============================================================================

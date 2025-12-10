@@ -1,0 +1,1503 @@
+/**
+ * Shipment Load V2 Page - 4-Screen Workflow
+ * Author: Hassan
+ * Date: 2025-11-05
+ * Updated: 2025-11-05 - Added Screen 4 (Success/Confirmation)
+ * Updated: 2025-11-05 - Added Exception Modal, FAB Menu, Submit Validation
+ * Updated: 2025-11-05 - Added Rack Exception Toggle (FAB Menu)
+ * Updated: 2025-11-05 - Simplified Screen 4 to match TSCS popup-style confirmation
+ * Updated: 2025-11-05 - Changed Screen 4 button colors and added Back to Dashboard
+ * Updated: 2025-12-08 - CRITICAL: Fixed Toyota Manifest parsing to use INDIVIDUAL fields
+ * Updated: 2025-12-08 - Integrated Shipment Load APIs (getShipmentLoadRoute, scanShipmentLoadSkid, completeShipmentLoad)
+ * Updated: 2025-12-08 - Changed from mock data to real API calls with JWT authentication
+ *
+ * SCREEN FLOW:
+ * 1. Scan Pickup Route QR → Parse and store → Continue to Screen 2
+ * 2. Trailer Information Form → Fill details → Continue to Screen 3
+ * 3. Skid Manifest Scanning (PLANNED/SCANNED split) → Scan moves items from planned to scanned → Submit
+ * 4. Success/Confirmation → Navy CONTINUE button + Back to Dashboard button
+ *
+ * FEATURES:
+ * - Full API integration with backend (/api/v1/shipment-load)
+ * - JWT authentication via apiClient
+ * - Fetches planned orders from API based on route
+ * - Toyota Manifest QR scanning (44-char format)
+ * - Parses: Plant, Supplier, Dock, Order, Load ID, Palletization (INDIVIDUAL), MROS (INDIVIDUAL), Skid ID (INDIVIDUAL)
+ * - Individual fields sent to API (NOT combined string)
+ * - Collapsible sections (Order Details, Planned Skids, Scanned Skids, Exceptions)
+ * - QR scanning with auto-parsing
+ * - Planned → Scanned workflow (items move upon scan)
+ * - Exception handling for unplanned items
+ * - FAB Menu: Save Draft, Unpick All, Rack Exception Toggle (Screen 3 only)
+ * - Draft session recovery from localStorage
+ * - Submit validation (all items loaded or exceptions documented)
+ * - Confirmation number generation (format: SL{timestamp}{random})
+ * - Screen 4: Minimal popup-style success confirmation (matches TSCS pattern)
+ * - Theme colors: Navy #253262, Red #D2312E, Off-white #FCFCFC
+ * - Font Awesome icons only (no Lucide)
+ */
+
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Scanner from '@/components/ui/Scanner';
+import Button from '@/components/ui/Button';
+import Card, { CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import Alert from '@/components/ui/Alert';
+import Badge from '@/components/ui/Badge';
+import VUTEQStaticBackground from '@/components/layout/VUTEQStaticBackground';
+import type { ScanResult } from '@/types';
+import {
+  getShipmentLoadRoute,
+  scanShipmentLoadSkid,
+  completeShipmentLoad,
+  type PlannedOrder as ApiPlannedOrder
+} from '@/lib/api';
+
+// Screen types
+type Screen = 1 | 2 | 3 | 4;
+
+// Toyota-specific exception types (matching skid-build)
+// Author: Hassan, 2025-11-05
+const EXCEPTION_TYPES = [
+  'Revised Quantity (Toyota Quantity Reduction)',
+  'Modified Quantity per Box',
+  'Supplier Revised Shortage (Short Shipment)',
+  'Non-Standard Packaging (Expendable)',
+];
+
+// Data interfaces
+interface PickupRouteData {
+  routeNumber: string;
+  plant: string;
+  supplierCode: string;
+  dockCode: string;
+  estimatedSkids: number;
+  rawQRValue: string;
+}
+
+interface TrailerData {
+  trailerNumber: string;
+  sealNumber: string;
+  carrierName: string;
+  driverName: string;
+  notes: string;
+}
+
+interface PlannedSkid {
+  orderId: string;
+  orderNumber: string;
+  dockCode: string;
+  plantCode: string;
+  supplierCode: string;
+  palletizationCode: string;  // Individual field - NOT combined
+  mros: number;
+  partCount: number;
+  destination: string;
+  isScanned: boolean;
+}
+
+interface ScannedSkid {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  dockCode: string;
+  palletizationCode: string;
+  mros: string;
+  skidId: string;
+  partCount: number;
+  destination: string;
+  timestamp: string;
+}
+
+interface Exception {
+  type: string;
+  comments: string;
+  relatedSkidId: string; // Which planned skid this exception is for
+  timestamp: string;
+}
+
+export default function ShipmentLoadV2Page() {
+  const router = useRouter();
+
+  // Screen state
+  const [currentScreen, setCurrentScreen] = useState<Screen>(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Screen 1: Pickup Route Data
+  const [pickupRouteData, setPickupRouteData] = useState<PickupRouteData | null>(null);
+
+  // Screen 2: Trailer Information
+  const [trailerData, setTrailerData] = useState<TrailerData>({
+    trailerNumber: '',
+    sealNumber: '',
+    carrierName: '',
+    driverName: '',
+    notes: '',
+  });
+
+  // Screen 3: Planned and Scanned Skids
+  const [plannedSkids, setPlannedSkids] = useState<PlannedSkid[]>([]);
+  const [scannedSkids, setScannedSkids] = useState<ScannedSkid[]>([]);
+  const [expandedSection, setExpandedSection] = useState<'order' | 'planned' | 'scanned' | 'exceptions' | null>(null);
+
+  // Exceptions Data (Screen 3)
+  // Author: Hassan, 2025-11-05
+  const [exceptions, setExceptions] = useState<Exception[]>([]);
+  const [showExceptionModal, setShowExceptionModal] = useState(false);
+  const [selectedExceptionType, setSelectedExceptionType] = useState('');
+  const [exceptionComments, setExceptionComments] = useState('');
+  const [selectedSkidForException, setSelectedSkidForException] = useState('');
+
+  // FAB Menu State
+  // Author: Hassan, 2025-11-05
+  const [fabMenuOpen, setFabMenuOpen] = useState(false);
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+
+  // Rack Exception Toggle (FAB Menu - Screen 3 only)
+  // Author: Hassan, 2025-11-05
+  const [rackExceptionEnabled, setRackExceptionEnabled] = useState(false);
+
+  // Confirmation number - generated at final submit
+  const [confirmationNumber, setConfirmationNumber] = useState<string>('');
+
+  /**
+   * Parse Pickup Route QR Code
+   * Fixed-Position Format (50 characters):
+   * Example: "02TMIHL56408   2024021301     IDZE06Load202402121411"
+   *
+   * Position Map:
+   * - Pos 2-7: Plant Code (TMIHL)
+   * - Pos 5-7: Dock Code (HL)
+   * - Pos 7-12: Supplier (56408)
+   * - Pos 15-23: Order Date (20240213)
+   * - Pos 23-25: Sequence (01)
+   * - Pos 30-36: Route (IDZE06)
+   * - Pos 36-40: Load Type (Load)
+   * - Pos 40-48: Pickup Date (20240212)
+   * - Pos 48-52: Pickup Time (1411)
+   *
+   * Author: Hassan, 2025-11-05
+   */
+  const parsePickupRouteQR = (qrValue: string): PickupRouteData | null => {
+    try {
+      // Expected length: 50 characters
+      if (qrValue.length < 50) {
+        console.error('Invalid pickup route QR format. Expected 50-character format.');
+        return null;
+      }
+
+      const plantCode = qrValue.substring(2, 7).trim();      // Pos 2-7: TMIHL
+      const dockCode = qrValue.substring(5, 7).trim();       // Pos 5-7: HL
+      const supplierCode = qrValue.substring(7, 12).trim();  // Pos 7-12: 56408
+      const orderDate = qrValue.substring(15, 23).trim();    // Pos 15-23: 20240213
+      const sequence = qrValue.substring(23, 25).trim();     // Pos 23-25: 01
+      const route = qrValue.substring(30, 36).trim();        // Pos 30-36: IDZE06
+      const loadType = qrValue.substring(36, 40).trim();     // Pos 36-40: Load
+      const pickupDate = qrValue.substring(40, 48).trim();   // Pos 40-48: 20240212
+      const pickupTime = qrValue.substring(48, 52).trim();   // Pos 48-52: 1411
+
+      const fullOrderNumber = orderDate + sequence;          // 2024021301
+
+      // For estimatedSkids, we'll use a default value since it's not in the QR
+      // This will be replaced with actual planned skid data from the system
+      const estimatedSkids = 5; // Default value
+
+      if (!plantCode || !dockCode || !supplierCode || !route) {
+        console.error('Invalid pickup route data - missing required fields');
+        return null;
+      }
+
+      return {
+        routeNumber: route,
+        plant: plantCode,
+        supplierCode,
+        dockCode,
+        estimatedSkids,
+        rawQRValue: qrValue,
+      };
+    } catch (error) {
+      console.error('Error parsing pickup route QR:', error);
+      return null;
+    }
+  };
+
+  /**
+   * Screen 1: Handle Pickup Route QR Scan
+   * Updated: 2025-11-05 - Added draft session recovery
+   */
+  const handlePickupRouteScan = (result: ScanResult) => {
+    console.log('Pickup route scan result:', result);
+
+    const parsedData = parsePickupRouteQR(result.scannedValue);
+
+    if (!parsedData) {
+      setError('Invalid Pickup Route QR Code. Please scan the correct barcode.');
+      return;
+    }
+
+    // Check for existing draft in localStorage
+    const savedDraft = localStorage.getItem('shipment-load-v2-draft');
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft);
+        // Check if draft is for the same route
+        if (draft.pickupRouteData?.routeNumber === parsedData.routeNumber) {
+          const shouldResume = confirm(
+            `Found a saved session for route ${parsedData.routeNumber} from ${new Date(draft.savedAt).toLocaleString()}.\n\nDo you want to resume this session?`
+          );
+
+          if (shouldResume) {
+            console.log('Resuming saved session:', draft);
+            // Restore all state from draft
+            setPickupRouteData(draft.pickupRouteData);
+            setTrailerData(draft.trailerData);
+            setPlannedSkids(draft.plannedSkids);
+            setScannedSkids(draft.scannedSkids);
+            setExceptions(draft.exceptions);
+            setCurrentScreen(draft.currentScreen);
+            setConfirmationNumber(draft.confirmationNumber || '');
+            setRackExceptionEnabled(draft.rackExceptionEnabled || false);
+            setError(null);
+            return;
+          } else {
+            // Clear old draft if user chooses not to resume
+            localStorage.removeItem('shipment-load-v2-draft');
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing saved draft:', e);
+        localStorage.removeItem('shipment-load-v2-draft');
+      }
+    }
+
+    // Successfully parsed - new session
+    setPickupRouteData(parsedData);
+    setError(null);
+  };
+
+  /**
+   * Screen 1: Continue to Trailer Information
+   * Updated: 2025-12-08 - Call API to get planned orders for route
+   */
+  const handlePickupRouteContinue = async () => {
+    if (!pickupRouteData) {
+      setError('Please scan a valid pickup route QR code first');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Call API to get orders for this route
+      const response = await getShipmentLoadRoute(pickupRouteData.routeNumber);
+
+      if (!response.success || !response.data) {
+        setError(response.error || 'Failed to fetch orders for this route');
+        setLoading(false);
+        return;
+      }
+
+      // Convert API response to PlannedSkid format
+      const apiOrders = response.data.orders;
+      const plannedSkidsFromApi: PlannedSkid[] = apiOrders.map((order: ApiPlannedOrder) => ({
+        orderId: order.orderId,
+        orderNumber: order.orderNumber,
+        dockCode: order.dockCode,
+        plantCode: order.plantCode,
+        supplierCode: order.supplierCode,
+        palletizationCode: order.plannedItems[0]?.palletizationCode || 'LB', // Use first item's palletization
+        mros: order.mros,
+        partCount: order.plannedItems.reduce((sum, item) => sum + item.totalBoxPlanned, 0),
+        destination: `Dock ${order.dockCode}`,
+        isScanned: false,
+      }));
+
+      console.log('Fetched planned orders from API:', plannedSkidsFromApi);
+      setPlannedSkids(plannedSkidsFromApi);
+      setCurrentScreen(2);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching route orders:', err);
+      setError('Failed to load route orders. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Screen 2: Validate and Continue to Skid Scanning
+   */
+  const handleTrailerContinue = () => {
+    // Validate required fields
+    if (!trailerData.trailerNumber.trim() || !trailerData.sealNumber.trim()) {
+      setError('Trailer Number and Seal Number are required');
+      return;
+    }
+
+    setCurrentScreen(3);
+    setError(null);
+  };
+
+  /**
+   * Parse Toyota Manifest QR Code (44 characters)
+   *
+   * Example: "02TMI02806V82023080205  IDVV01      LB05001A"
+   *
+   * Fixed-Position Format (MUST MATCH skid-build/page.tsx EXACTLY):
+   * - Pos 0-5: Plant Code (02TMI)
+   * - Pos 5-10: Supplier Code (02806)
+   * - Pos 10-12: Dock Code (V8)
+   * - Pos 12-24: Order Number (2023080205  ) - 12 chars with trailing spaces
+   * - Pos 24-36: Load/Transport ID (IDVV01      ) - 12 chars with trailing spaces
+   * - Pos 36-38: Palletization (LB)
+   * - Pos 38-40: MROS (05)
+   * - Pos 40-44: SKID ID (001A)
+   *
+   * Returns INDIVIDUAL FIELDS (NOT combined string)
+   *
+   * Author: Hassan, 2025-11-05
+   * Updated: 2025-12-08 - Return individual fields instead of combined skidId string
+   */
+  interface ParsedManifest {
+    plantCode: string;
+    supplierCode: string;
+    dockCode: string;
+    orderNumber: string;
+    loadId: string;
+    palletizationCode: string;  // "LB" - INDIVIDUAL
+    mros: string;               // "05" - INDIVIDUAL
+    skidId: string;             // "001A" - INDIVIDUAL
+  }
+
+  const parseToyotaManifest = (qr: string): ParsedManifest | null => {
+    if (qr.length < 44) {
+      console.error('Invalid Toyota Manifest - expected 44 characters, got:', qr.length);
+      return null;
+    }
+
+    try {
+      // FIXED POSITION EXTRACTION (0-indexed for JavaScript substring)
+      // CRITICAL: MUST MATCH skid-build/page.tsx positions EXACTLY
+      const plantCode = qr.substring(0, 5).trim();           // Positions 0-5: "02TMI"
+      const supplierCode = qr.substring(5, 10).trim();       // Positions 5-10: "02806"
+      const dockCode = qr.substring(10, 12).trim();          // Positions 10-12: "V8"
+      const orderNumber = qr.substring(12, 24).trim();       // Positions 12-24: "2023080205  " (trim spaces)
+      const loadId = qr.substring(24, 36).trim();            // Positions 24-36: "IDVV01      " (12 chars)
+      const palletizationCode = qr.substring(36, 38);        // Positions 36-38: "LB" - INDIVIDUAL
+      const mros = qr.substring(38, 40);                     // Positions 38-40: "05" - INDIVIDUAL
+      const skidId = qr.substring(40, 44);                   // Positions 40-44: "001A" - INDIVIDUAL
+
+      console.log('=== MANIFEST SCAN PARSING (INDIVIDUAL FIELDS) ===');
+      console.log('Raw input:', qr);
+      console.log('Length:', qr.length);
+      console.log('Extracted fields (INDIVIDUAL - NOT COMBINED):');
+      console.log('  plantCode (0-5):', `"${plantCode}"`);
+      console.log('  supplierCode (5-10):', `"${supplierCode}"`);
+      console.log('  dockCode (10-12):', `"${dockCode}"`);
+      console.log('  orderNumber (12-24):', `"${orderNumber}"`);
+      console.log('  loadId (24-36):', `"${loadId}"`);
+      console.log('  palletizationCode (36-38):', `"${palletizationCode}"` + ' (INDIVIDUAL)');
+      console.log('  mros (38-40):', `"${mros}"` + ' (INDIVIDUAL)');
+      console.log('  skidId (40-44):', `"${skidId}"` + ' (INDIVIDUAL)');
+      console.log('✓ Manifest Scan Parsed successfully!');
+      console.log('======================');
+
+      return {
+        plantCode,
+        supplierCode,
+        dockCode,
+        orderNumber,
+        loadId,
+        palletizationCode,
+        mros,
+        skidId,
+      };
+    } catch (error) {
+      console.error('Error parsing Toyota Manifest:', error);
+      return null;
+    }
+  };
+
+  /**
+   * Screen 3: Handle Skid Scan
+   * Parse scanned Toyota Manifest (44 chars) and validate via API
+   * Author: Hassan, 2025-11-05
+   * Updated: 2025-12-08 - Call API with individual fields instead of combined skidId
+   */
+  const handleSkidScan = async (result: ScanResult) => {
+    console.log('Skid scan result:', result);
+
+    if (!result.success) {
+      setError(result.error || 'Scan failed');
+      return;
+    }
+
+    const scannedValue = result.scannedValue;
+
+    // Parse the Toyota Manifest QR to extract INDIVIDUAL fields
+    const manifest = parseToyotaManifest(scannedValue);
+
+    if (!manifest) {
+      setError('Invalid Toyota Manifest. Please scan the correct label.');
+      return;
+    }
+
+    if (!pickupRouteData) {
+      setError('Route data not found. Please start over.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Call API to validate and scan skid with INDIVIDUAL fields
+      const response = await scanShipmentLoadSkid({
+        routeNumber: pickupRouteData.routeNumber,
+        orderNumber: manifest.orderNumber,
+        dockCode: manifest.dockCode,
+        palletizationCode: manifest.palletizationCode,  // Individual field
+        mros: manifest.mros,                            // Individual field
+        skidId: manifest.skidId,                        // Individual field
+        scannedBy: 'user-001', // TODO: Get from auth context
+      });
+
+      if (!response.success || !response.data) {
+        setError(response.error || 'Failed to validate skid');
+        setLoading(false);
+        return;
+      }
+
+      // Find the planned skid that was scanned
+      const plannedSkidIndex = plannedSkids.findIndex(
+        skid => skid.orderNumber === manifest.orderNumber && skid.dockCode === manifest.dockCode
+      );
+
+      if (plannedSkidIndex === -1) {
+        setError(`Order ${manifest.orderNumber} not found in planned list.`);
+        setLoading(false);
+        return;
+      }
+
+      const plannedSkid = plannedSkids[plannedSkidIndex];
+
+      // Check if already scanned
+      const alreadyScanned = scannedSkids.some(
+        item => item.orderNumber === manifest.orderNumber && item.dockCode === manifest.dockCode
+      );
+      if (alreadyScanned) {
+        setError(`Order ${manifest.orderNumber} has already been scanned.`);
+        setLoading(false);
+        return;
+      }
+
+      // Create scanned item with individual fields
+      const newScannedSkid: ScannedSkid = {
+        id: `${Date.now()}-${Math.random()}`,
+        orderId: plannedSkid.orderId,
+        orderNumber: manifest.orderNumber,
+        dockCode: manifest.dockCode,
+        palletizationCode: manifest.palletizationCode,
+        mros: manifest.mros,
+        skidId: manifest.skidId,
+        partCount: plannedSkid.partCount,
+        destination: plannedSkid.destination,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Update state: mark planned as scanned and add to scanned list
+      setPlannedSkids(plannedSkids.map((skid, idx) =>
+        idx === plannedSkidIndex ? { ...skid, isScanned: true } : skid
+      ));
+      setScannedSkids([...scannedSkids, newScannedSkid]);
+      setError(null);
+      console.log('Skid scanned successfully:', newScannedSkid);
+    } catch (err) {
+      console.error('Error scanning skid:', err);
+      setError('Failed to scan skid. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Screen 3: Add Exception Handler
+   * Author: Hassan, 2025-11-05
+   */
+  const handleAddException = () => {
+    if (!selectedExceptionType || !exceptionComments.trim()) {
+      setError('Please select exception type and add comments');
+      return;
+    }
+
+    if (!selectedSkidForException) {
+      setError('Please select which skid this exception is for');
+      return;
+    }
+
+    const newException: Exception = {
+      type: selectedExceptionType,
+      comments: exceptionComments.trim(),
+      relatedSkidId: selectedSkidForException,
+      timestamp: new Date().toISOString(),
+    };
+
+    console.log('Adding exception:', newException);
+    setExceptions([...exceptions, newException]);
+    setSelectedExceptionType('');
+    setExceptionComments('');
+    setSelectedSkidForException('');
+    setShowExceptionModal(false);
+    setError(null);
+  };
+
+  /**
+   * Screen 3: Remove Exception Handler
+   * Author: Hassan, 2025-11-05
+   */
+  const handleRemoveException = (index: number) => {
+    console.log('Removing exception at index:', index);
+    setExceptions(exceptions.filter((_, i) => i !== index));
+  };
+
+  /**
+   * FAB Menu: Save Draft Handler
+   * Author: Hassan, 2025-11-05
+   * Updated: 2025-11-05 - Added rackExceptionEnabled to draft
+   */
+  const handleSaveDraft = () => {
+    const draft = {
+      pickupRouteData,
+      trailerData,
+      plannedSkids,
+      scannedSkids,
+      exceptions,
+      currentScreen,
+      confirmationNumber,
+      rackExceptionEnabled,
+      savedAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem('shipment-load-v2-draft', JSON.stringify(draft));
+    console.log('Draft saved to localStorage:', draft);
+    setFabMenuOpen(false);
+    setShowSuccessAlert(true);
+    setTimeout(() => setShowSuccessAlert(false), 3000);
+  };
+
+  /**
+   * FAB Menu: Unpick All Handler
+   * Author: Hassan, 2025-11-05
+   */
+  const handleUnpickAll = () => {
+    if (confirm('Are you sure you want to unpick all scanned items?')) {
+      console.log('Unpicking all scanned items');
+      setScannedSkids([]);
+      setPlannedSkids(plannedSkids.map(skid => ({ ...skid, isScanned: false })));
+      setFabMenuOpen(false);
+    }
+  };
+
+  /**
+   * Screen 3: Final Submit with Validation
+   * Updated: 2025-11-05 - Added exception validation logic
+   * Updated: 2025-12-08 - Call complete shipment API
+   */
+  const handleFinalSubmit = async () => {
+    console.log('=== SUBMIT VALIDATION ===');
+    console.log('Planned Skids:', plannedSkids);
+    console.log('Scanned Skids:', scannedSkids);
+    console.log('Exceptions:', exceptions);
+
+    // Check if all planned items are loaded
+    const areAllItemsLoaded = plannedSkids.every(skid => skid.isScanned);
+    console.log('All items loaded:', areAllItemsLoaded);
+
+    // Get unloaded skids
+    const unloadedSkids = plannedSkids.filter(skid => !skid.isScanned);
+    console.log('Unloaded skids:', unloadedSkids);
+
+    // Check if unloaded items have exceptions
+    const hasExceptionForAllUnloaded = unloadedSkids.every(skid =>
+      exceptions.some(e => e.relatedSkidId === `${skid.palletizationCode}-${skid.mros}-${skid.orderNumber}`)
+    );
+    console.log('All unloaded have exceptions:', hasExceptionForAllUnloaded);
+
+    // Enable submit only if all loaded OR (some loaded AND all unloaded have exceptions)
+    const canSubmit = areAllItemsLoaded || (scannedSkids.length > 0 && hasExceptionForAllUnloaded);
+    console.log('Can submit:', canSubmit);
+
+    if (!canSubmit) {
+      if (scannedSkids.length === 0) {
+        setError('Cannot submit: No skids have been scanned yet.');
+      } else if (!hasExceptionForAllUnloaded) {
+        setError(`Cannot submit: ${unloadedSkids.length} unloaded skid(s) require exceptions.`);
+      }
+      return;
+    }
+
+    if (!pickupRouteData) {
+      setError('Route data not found. Please start over.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Call complete shipment API
+      const response = await completeShipmentLoad({
+        routeNumber: pickupRouteData.routeNumber,
+        trailerNumber: trailerData.trailerNumber,
+        sealNumber: trailerData.sealNumber,
+        driverName: trailerData.driverName || undefined,
+        carrierName: trailerData.carrierName || undefined,
+        notes: trailerData.notes || undefined,
+        orderIds: scannedSkids.map(skid => skid.orderId),
+        completedBy: 'user-001', // TODO: Get from auth context
+      });
+
+      if (!response.success || !response.data) {
+        setError(response.error || 'Failed to complete shipment');
+        setLoading(false);
+        return;
+      }
+
+      // Set confirmation number from API response
+      setConfirmationNumber(response.data.confirmationNumber);
+      console.log('Shipment completed successfully:', response.data);
+
+      // Move to success screen
+      setCurrentScreen(4);
+      setError(null);
+    } catch (err) {
+      console.error('Error completing shipment:', err);
+      setError('Failed to complete shipment. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Reset everything
+   * Updated: 2025-11-05 - Clear localStorage draft on reset
+   * Updated: 2025-11-05 - Added rackExceptionEnabled reset
+   */
+  const handleReset = () => {
+    console.log('Resetting all state and clearing draft');
+    localStorage.removeItem('shipment-load-v2-draft');
+    setCurrentScreen(1);
+    setPickupRouteData(null);
+    setTrailerData({
+      trailerNumber: '',
+      sealNumber: '',
+      carrierName: '',
+      driverName: '',
+      notes: '',
+    });
+    setPlannedSkids([]);
+    setScannedSkids([]);
+    setExceptions([]);
+    setConfirmationNumber('');
+    setRackExceptionEnabled(false);
+    setError(null);
+  };
+
+  /**
+   * Start New Shipment Handler (Screen 4)
+   * Author: Hassan, 2025-11-05
+   */
+  const handleNewShipment = () => {
+    handleReset();
+  };
+
+  return (
+    <div className="fixed inset-0 flex flex-col">
+      {/* Background - Fixed */}
+      <VUTEQStaticBackground />
+
+      {/* Content - Scrollable */}
+      <div className="relative flex-1 overflow-y-auto">
+        <div className="p-3 pt-20 max-w-3xl mx-auto space-y-2 pb-20">
+          {/* Progress Indicator - Hide on Success Screen */}
+          {currentScreen !== 4 && (
+            <Card>
+              <CardContent className="p-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium" style={{ color: '#253262' }}>
+                    Screen {currentScreen} of 3
+                  </span>
+                  <div className="flex gap-1">
+                    {[1, 2, 3].map((step) => (
+                      <div
+                        key={step}
+                        className="w-10 h-1 rounded-full"
+                        style={{
+                          backgroundColor: step <= currentScreen ? '#253262' : '#E5E7EB',
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Error Alert */}
+          {error && (
+            <Alert variant="error" onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+
+          {/* Success Alert for Draft Save */}
+          {showSuccessAlert && (
+            <Alert variant="success" onClose={() => setShowSuccessAlert(false)}>
+              Draft saved successfully!
+            </Alert>
+          )}
+
+          {/* SCREEN 1: Scan Pickup Route QR */}
+          {currentScreen === 1 && (
+            <Card style={{ backgroundColor: '#FCFCFC' }}>
+              <CardContent className="p-3 space-y-3">
+                {/* Header with Icon */}
+                <div className="flex items-center gap-3 pb-2 border-b border-gray-200">
+                  <i className="fa fa-truck text-2xl" style={{ color: '#253262' }}></i>
+                  <div>
+                    <h1 className="text-xl font-bold" style={{ color: '#253262' }}>
+                      Shipment Load
+                    </h1>
+                    <p className="text-sm text-gray-600">
+                      Scan the Pickup Route QR code to begin
+                    </p>
+                  </div>
+                </div>
+
+                {/* Scanner */}
+                {!pickupRouteData && (
+                  <Scanner
+                    onScan={handlePickupRouteScan}
+                    label="Scan Pickup Route QR Code"
+                    placeholder="Scan Pickup Route QR Code"
+                    disabled={loading}
+                  />
+                )}
+
+                {/* Display Scanned Route Information */}
+                {pickupRouteData && (
+                  <div className="space-y-2 pt-2">
+                    <div className="p-3 bg-success-50 border-2 border-success-200 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <i className="fa fa-circle-check text-success-600 text-lg"></i>
+                        <h3 className="font-semibold text-sm text-success-700">Pickup Route Scanned</h3>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                        <div>
+                          <span className="text-gray-600">Route Number:</span>
+                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.routeNumber}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Plant:</span>
+                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.plant}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Supplier Code:</span>
+                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.supplierCode}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Dock Code:</span>
+                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.dockCode}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-600">Estimated Skids:</span>
+                          <p className="font-bold text-lg text-gray-900">{pickupRouteData.estimatedSkids}</p>
+                        </div>
+                      </div>
+
+                      {/* Continue Button */}
+                      <div className="mt-3">
+                        <Button
+                          onClick={handlePickupRouteContinue}
+                          variant="success-light"
+                          fullWidth
+                        >
+                          <i className="fa fa-arrow-right mr-2"></i>
+                          Continue to Trailer Information
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SCREEN 2: Trailer Information Form */}
+          {currentScreen === 2 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Trailer Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-gray-600">
+                  Enter trailer and driver details for this shipment.
+                </p>
+
+                {/* Trailer Number */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
+                    Trailer Number *
+                  </label>
+                  <input
+                    type="text"
+                    value={trailerData.trailerNumber}
+                    onChange={(e) => setTrailerData({ ...trailerData, trailerNumber: e.target.value })}
+                    placeholder="Enter trailer number"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    style={{ backgroundColor: '#FCFCFC' }}
+                  />
+                </div>
+
+                {/* Seal Number */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
+                    Seal Number *
+                  </label>
+                  <input
+                    type="text"
+                    value={trailerData.sealNumber}
+                    onChange={(e) => setTrailerData({ ...trailerData, sealNumber: e.target.value })}
+                    placeholder="Enter seal number"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    style={{ backgroundColor: '#FCFCFC' }}
+                  />
+                </div>
+
+                {/* Carrier Name */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
+                    Carrier Name
+                  </label>
+                  <input
+                    type="text"
+                    value={trailerData.carrierName}
+                    onChange={(e) => setTrailerData({ ...trailerData, carrierName: e.target.value })}
+                    placeholder="Enter carrier name (optional)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    style={{ backgroundColor: '#FCFCFC' }}
+                  />
+                </div>
+
+                {/* Driver Name */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
+                    Driver Name
+                  </label>
+                  <input
+                    type="text"
+                    value={trailerData.driverName}
+                    onChange={(e) => setTrailerData({ ...trailerData, driverName: e.target.value })}
+                    placeholder="Enter driver name (optional)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    style={{ backgroundColor: '#FCFCFC' }}
+                  />
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
+                    Notes
+                  </label>
+                  <textarea
+                    value={trailerData.notes}
+                    onChange={(e) => setTrailerData({ ...trailerData, notes: e.target.value })}
+                    placeholder="Additional notes (optional)"
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                    style={{ backgroundColor: '#FCFCFC' }}
+                  />
+                </div>
+
+                {/* Continue Button */}
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    onClick={() => setCurrentScreen(1)}
+                    variant="secondary"
+                    fullWidth
+                  >
+                    <i className="fa fa-arrow-left mr-2"></i>
+                    Back
+                  </Button>
+                  <Button
+                    onClick={handleTrailerContinue}
+                    variant="success"
+                    fullWidth
+                    disabled={!trailerData.trailerNumber.trim() || !trailerData.sealNumber.trim()}
+                  >
+                    <i className="fa fa-arrow-right mr-2"></i>
+                    Continue to Skid Scanning
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* SCREEN 3: Skid Scanning (PLANNED/SCANNED Split) */}
+          {currentScreen === 3 && (
+            <>
+              {/* Order Details - Collapsible */}
+              <Card>
+                <CardHeader className="p-0">
+                  <div
+                    className={`flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors ${
+                      expandedSection === 'order' ? 'p-4 rounded-t-lg' : 'p-2 rounded-lg'
+                    }`}
+                    onClick={() => setExpandedSection(expandedSection === 'order' ? null : 'order')}
+                  >
+                    <CardTitle className={expandedSection === 'order' ? 'text-sm' : 'text-xs'}>Shipment Details</CardTitle>
+                    <i className={`fa fa-chevron-${expandedSection === 'order' ? 'up' : 'down'}`}></i>
+                  </div>
+                </CardHeader>
+                {expandedSection === 'order' && (
+                  <CardContent>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Route Number:</span>
+                        <span className="font-mono font-bold">{pickupRouteData?.routeNumber}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Plant:</span>
+                        <span className="font-medium">{pickupRouteData?.plant}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Supplier:</span>
+                        <span className="font-medium">{pickupRouteData?.supplierCode}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Dock:</span>
+                        <span className="font-medium">{pickupRouteData?.dockCode}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Trailer:</span>
+                        <span className="font-medium">{trailerData.trailerNumber}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Seal:</span>
+                        <span className="font-medium">{trailerData.sealNumber}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Planned Skids - Collapsible */}
+              <Card>
+                <CardHeader className="p-0">
+                  <div
+                    className={`flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors ${
+                      expandedSection === 'planned' ? 'p-4 rounded-t-lg' : 'p-2 rounded-lg'
+                    }`}
+                    onClick={() => setExpandedSection(expandedSection === 'planned' ? null : 'planned')}
+                  >
+                    <CardTitle className={expandedSection === 'planned' ? 'text-sm' : 'text-xs'}>
+                      Planned Skids ({plannedSkids.filter(s => !s.isScanned).length}/{plannedSkids.length})
+                    </CardTitle>
+                    <i className={`fa fa-chevron-${expandedSection === 'planned' ? 'up' : 'down'}`}></i>
+                  </div>
+                </CardHeader>
+                {expandedSection === 'planned' && (
+                  <CardContent className="space-y-2">
+                    {plannedSkids.filter(skid => !skid.isScanned).length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        All skids scanned!
+                      </p>
+                    ) : (
+                      plannedSkids
+                        .filter(skid => !skid.isScanned)
+                        .map((skid, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3 border border-gray-200 rounded-lg"
+                            style={{ backgroundColor: '#FFFFFF' }}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <p className="font-mono text-sm font-bold" style={{ color: '#253262' }}>
+                                  Order: {skid.orderNumber}
+                                </p>
+                                <p className="text-xs text-gray-600">Dock: {skid.dockCode}</p>
+                                <p className="text-xs text-gray-600">Palletization: {skid.palletizationCode}</p>
+                                <p className="text-xs text-gray-600">MROS: {skid.mros}</p>
+                              </div>
+                              <Badge variant="warning">Pending</Badge>
+                            </div>
+                          </div>
+                        ))
+                    )}
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Scanned Skids - Collapsible */}
+              <Card>
+                <CardHeader className="p-0">
+                  <div
+                    className={`flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors ${
+                      expandedSection === 'scanned' ? 'p-4 rounded-t-lg' : 'p-2 rounded-lg'
+                    }`}
+                    onClick={() => setExpandedSection(expandedSection === 'scanned' ? null : 'scanned')}
+                  >
+                    <CardTitle className={expandedSection === 'scanned' ? 'text-sm' : 'text-xs'}>
+                      Scanned Skids ({scannedSkids.length}/{plannedSkids.length})
+                    </CardTitle>
+                    <i className={`fa fa-chevron-${expandedSection === 'scanned' ? 'up' : 'down'}`}></i>
+                  </div>
+                </CardHeader>
+                {expandedSection === 'scanned' && (
+                  <CardContent className="space-y-2">
+                    {scannedSkids.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        No skids scanned yet
+                      </p>
+                    ) : (
+                      scannedSkids.map((skid, idx) => (
+                        <div
+                          key={skid.id}
+                          className="p-3 border-2 border-success-500 rounded-lg relative"
+                          style={{ backgroundColor: '#FFFFFF' }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="font-mono text-sm font-bold" style={{ color: '#253262' }}>
+                                Order: {skid.orderNumber}
+                              </p>
+                              <p className="text-xs text-gray-600">Dock: {skid.dockCode}</p>
+                              <p className="text-xs text-gray-600">
+                                Skid: {skid.palletizationCode}-{skid.mros}-{skid.skidId}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                <i className="fa fa-clock mr-1"></i>
+                                {new Date(skid.timestamp).toLocaleTimeString()}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              <i className="fa fa-circle-check text-success-600 text-xl"></i>
+                              <span className="text-xs font-medium text-success-700">#{idx + 1}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Exceptions List - Collapsible */}
+              <Card>
+                <CardHeader className="p-0">
+                  <div
+                    className={`flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors ${
+                      expandedSection === 'exceptions' ? 'p-4 rounded-t-lg' : 'p-2 rounded-lg'
+                    }`}
+                    onClick={() => setExpandedSection(expandedSection === 'exceptions' ? null : 'exceptions')}
+                  >
+                    <CardTitle className={expandedSection === 'exceptions' ? 'text-sm' : 'text-xs'}>
+                      Exceptions ({exceptions.length})
+                    </CardTitle>
+                    <i className={`fa fa-chevron-${expandedSection === 'exceptions' ? 'up' : 'down'}`}></i>
+                  </div>
+                </CardHeader>
+                {expandedSection === 'exceptions' && (
+                  <CardContent className="space-y-2">
+                    {exceptions.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        No exceptions added
+                      </p>
+                    ) : (
+                      exceptions.map((exception, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3 bg-warning-50 border border-warning-200 rounded-lg"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Badge variant="warning">{exception.type}</Badge>
+                                <span className="text-xs text-gray-500">
+                                  {new Date(exception.timestamp).toLocaleString()}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-600 mb-1">
+                                <span className="font-semibold">Skid:</span> {exception.relatedSkidId}
+                              </p>
+                              <p className="text-sm text-gray-700">{exception.comments}</p>
+                            </div>
+                            <button
+                              onClick={() => handleRemoveException(idx)}
+                              className="text-error-600 hover:text-error-700 p-1"
+                              aria-label="Remove exception"
+                            >
+                              <i className="fa fa-trash"></i>
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Scan Skid Manifest - ALWAYS VISIBLE */}
+              <div className="space-y-3">
+                <Scanner
+                  onScan={handleSkidScan}
+                  label="Scan Toyota Manifest"
+                  placeholder="Scan Toyota Manifest Label"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setShowExceptionModal(true)}
+                  variant="warning"
+                  fullWidth
+                >
+                  <i className="fa fa-exclamation-triangle mr-2"></i>
+                  Add Exception
+                </Button>
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setCurrentScreen(2)}
+                  variant="secondary"
+                  fullWidth
+                >
+                  <i className="fa fa-arrow-left mr-2"></i>
+                  Back
+                </Button>
+                <Button
+                  onClick={handleFinalSubmit}
+                  variant="success"
+                  fullWidth
+                  loading={loading}
+                  disabled={
+                    !(plannedSkids.every(skid => skid.isScanned) ||
+                      (scannedSkids.length > 0 &&
+                        plannedSkids.filter(skid => !skid.isScanned).every(skid =>
+                          exceptions.some(e => e.relatedSkidId === skid.skidId)
+                        )))
+                  }
+                >
+                  <i className="fa fa-paper-plane mr-2"></i>
+                  Submit Shipment
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* SCREEN 4: Success/Confirmation Display - SIMPLIFIED */}
+          {/* Author: Hassan, 2025-11-05 */}
+          {/* Updated: 2025-11-05 - Simplified to match TSCS popup-style confirmation */}
+          {/* Updated: 2025-11-05 - Changed button colors and added Back to Dashboard */}
+          {currentScreen === 4 && (
+            <div className="flex items-center justify-center min-h-[calc(100vh-140px)]">
+              {/* Compact Success Card - Modal Style */}
+              <Card className="max-w-md w-full shadow-2xl">
+                <CardContent className="p-8 text-center space-y-6">
+                  {/* Large Success Icon */}
+                  <div className="flex justify-center">
+                    <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-success-100">
+                      <i className="fa-light fa-circle-check text-6xl text-success-600"></i>
+                    </div>
+                  </div>
+
+                  {/* Success Message */}
+                  <div>
+                    <h1 className="text-2xl font-bold mb-2" style={{ color: '#253262' }}>
+                      Submitted Successfully
+                    </h1>
+                  </div>
+
+                  {/* Confirmation Number Display */}
+                  <div className="py-4">
+                    <p className="text-sm text-gray-600 mb-3">Confirmation Number</p>
+                    <div className="bg-gray-50 px-6 py-4 rounded-lg border-2 border-gray-300">
+                      <span className="font-mono text-2xl font-bold select-all" style={{ color: '#253262' }}>
+                        {confirmationNumber}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons - Stacked Vertically */}
+                  <div className="pt-4 space-y-3">
+                    {/* Primary Action: Continue - VUTEQ Navy */}
+                    <Button
+                      onClick={handleNewShipment}
+                      variant="primary"
+                      fullWidth
+                      className="py-3 text-base font-semibold"
+                      style={{ backgroundColor: '#253262', color: 'white' }}
+                    >
+                      <i className="fa fa-plus mr-2"></i>
+                      CONTINUE
+                    </Button>
+
+                    {/* Secondary Action: Back to Dashboard */}
+                    <Button
+                      onClick={() => router.push('/')}
+                      variant="secondary"
+                      fullWidth
+                      className="py-3 text-base font-semibold"
+                    >
+                      <i className="fa fa-home mr-2"></i>
+                      BACK TO DASHBOARD
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Global Action Buttons - Hide on Success Screen */}
+          {currentScreen !== 4 && (
+            <div className="flex gap-2">
+              <Button
+                onClick={() => router.push('/')}
+                variant="error"
+                fullWidth
+              >
+                <i className="fa fa-xmark mr-2"></i>
+                Cancel
+              </Button>
+              {currentScreen > 1 && (
+                <Button
+                  onClick={handleReset}
+                  variant="primary"
+                  fullWidth
+                >
+                  <i className="fa fa-rotate-right mr-2"></i>
+                  Start Over
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* FAB Menu (Bottom Left) - Visible on Screens 1-3 */}
+      {currentScreen >= 1 && currentScreen <= 3 && (
+        <div className="fixed bottom-20 left-4 z-50">
+          {/* FAB Toggle Button */}
+          <button
+            onClick={() => setFabMenuOpen(!fabMenuOpen)}
+            className="w-14 h-14 rounded-full bg-[#253262] text-white shadow-lg hover:bg-[#1a2347] transition-colors flex items-center justify-center"
+          >
+            <i className={`fa-light ${fabMenuOpen ? 'fa-xmark' : 'fa-ellipsis-vertical'} text-xl`}></i>
+          </button>
+
+          {/* Popup Menu Card */}
+          {fabMenuOpen && (
+            <div className="absolute bottom-16 left-0 bg-white rounded-lg shadow-xl py-1 min-w-[240px] border border-gray-200">
+              {/* Save Draft - ALL SCREENS */}
+              <button
+                onClick={() => {
+                  handleSaveDraft();
+                  setFabMenuOpen(false);
+                }}
+                className="flex items-center gap-3 px-4 py-3 w-full hover:bg-gray-50 transition-colors text-left"
+              >
+                <i className="fa-light fa-cloud-arrow-up text-lg text-blue-500"></i>
+                <span className="text-sm font-medium text-gray-700">Save Draft</span>
+              </button>
+
+              {/* Unpick All - Screen 3 Only */}
+              <button
+                onClick={() => {
+                  handleUnpickAll();
+                  setFabMenuOpen(false);
+                }}
+                disabled={currentScreen !== 3 || scannedSkids.length === 0}
+                className={`flex items-center gap-3 px-4 py-3 w-full transition-colors text-left ${
+                  currentScreen === 3 && scannedSkids.length > 0
+                    ? 'hover:bg-gray-50 cursor-pointer'
+                    : 'opacity-50 cursor-not-allowed bg-gray-50'
+                }`}
+              >
+                <i className={`fa-light fa-trash text-lg ${
+                  currentScreen === 3 && scannedSkids.length > 0 ? 'text-red-500' : 'text-gray-400'
+                }`}></i>
+                <span className="text-sm font-medium text-gray-700">Unpick All</span>
+              </button>
+
+              {/* Rack Exception Toggle - Screen 3 Only */}
+              {/* Author: Hassan, 2025-11-05 */}
+              <button
+                onClick={() => {
+                  if (currentScreen === 3) {
+                    setRackExceptionEnabled(!rackExceptionEnabled);
+                  }
+                }}
+                disabled={currentScreen !== 3}
+                className={`flex items-center justify-between gap-3 px-4 py-3 w-full transition-colors text-left ${
+                  currentScreen === 3
+                    ? 'hover:bg-gray-50 cursor-pointer'
+                    : 'opacity-50 cursor-not-allowed bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <i className={`fa-light fa-warehouse text-lg ${
+                    currentScreen === 3 ? 'text-purple-500' : 'text-gray-400'
+                  }`}></i>
+                  <span className="text-sm font-medium text-gray-700">Rack Exception</span>
+                </div>
+                {currentScreen === 3 && (
+                  <Badge variant={rackExceptionEnabled ? 'success' : 'secondary'}>
+                    {rackExceptionEnabled ? 'ON' : 'OFF'}
+                  </Badge>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Exception Modal - Popup Dialog */}
+      {showExceptionModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => {
+            setShowExceptionModal(false);
+            setSelectedExceptionType('');
+            setExceptionComments('');
+            setSelectedSkidForException('');
+          }}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold" style={{ color: '#253262' }}>
+                Add Exception
+              </h3>
+              <button
+                onClick={() => {
+                  setShowExceptionModal(false);
+                  setSelectedExceptionType('');
+                  setExceptionComments('');
+                  setSelectedSkidForException('');
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Close modal"
+              >
+                <i className="fa-light fa-xmark text-2xl"></i>
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-4">
+              {/* Exception Type Dropdown */}
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#253262' }}>
+                  Exception Type *
+                </label>
+                <select
+                  value={selectedExceptionType}
+                  onChange={(e) => setSelectedExceptionType(e.target.value)}
+                  className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                  style={{ backgroundColor: '#FCFCFC' }}
+                >
+                  <option value="">Select exception type...</option>
+                  {EXCEPTION_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Which Skid Dropdown - Show unscanned planned items only */}
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#253262' }}>
+                  Which Skid? *
+                </label>
+                <select
+                  value={selectedSkidForException}
+                  onChange={(e) => setSelectedSkidForException(e.target.value)}
+                  className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                  style={{ backgroundColor: '#FCFCFC' }}
+                >
+                  <option value="">Select unscanned skid...</option>
+                  {plannedSkids
+                    .filter(skid => !skid.isScanned)
+                    .map((skid) => (
+                      <option key={skid.orderId} value={`${skid.palletizationCode}-${skid.mros}-${skid.orderNumber}`}>
+                        {skid.orderNumber} - Dock {skid.dockCode} - {skid.palletizationCode}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* Comments Textarea */}
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#253262' }}>
+                  Comments *
+                </label>
+                <div className="space-y-1">
+                  <textarea
+                    value={exceptionComments}
+                    onChange={(e) => setExceptionComments(e.target.value)}
+                    placeholder="Describe the reason for the exception..."
+                    rows={4}
+                    maxLength={100}
+                    className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none text-sm"
+                    style={{ backgroundColor: '#FCFCFC' }}
+                  />
+                  <div className="text-xs text-gray-500 text-right">
+                    {exceptionComments.length} / 100 characters
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex gap-2 p-4 border-t border-gray-200">
+              <Button
+                onClick={() => {
+                  setShowExceptionModal(false);
+                  setSelectedExceptionType('');
+                  setExceptionComments('');
+                  setSelectedSkidForException('');
+                }}
+                variant="secondary"
+                fullWidth
+              >
+                <i className="fa-light fa-xmark mr-2"></i>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddException}
+                variant="warning"
+                fullWidth
+                disabled={!selectedExceptionType || !exceptionComments.trim() || !selectedSkidForException}
+              >
+                <i className="fa-light fa-plus mr-2"></i>
+                Add Exception
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

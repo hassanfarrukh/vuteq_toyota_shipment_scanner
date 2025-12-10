@@ -1,0 +1,26 @@
+# ==============================================================================
+# VUTEQ SQL Server Database - Development Dockerfile
+# ==============================================================================
+# Author: Hassan
+# Date: 2025-11-23
+# Description: Custom SQL Server image with automatic database initialization
+# ==============================================================================
+
+FROM mcr.microsoft.com/mssql/server:2022-latest
+
+# Set environment variables
+ENV ACCEPT_EULA=Y
+ENV MSSQL_PID=Developer
+
+# Create directory for initialization scripts
+RUN mkdir -p /docker-entrypoint-initdb.d
+
+# Copy SQL schema file (note: actual initialization is done via external scripts)
+# This Dockerfile is kept for reference but not actively used in current setup
+
+# Expose SQL Server port
+EXPOSE 1433
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=30s \
+    CMD /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P ${SA_PASSWORD} -C -Q 'SELECT 1' || exit 1

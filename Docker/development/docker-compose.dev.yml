@@ -1,0 +1,242 @@
+# ==============================================================================
+# VUTEQ Warehouse Scanning System - Development Environment
+# ==============================================================================
+# Author: Hassan
+# Date: 2025-10-20
+# Description: Docker Compose configuration for local development with hot-reload,
+#              volume mounts, and development-friendly logging
+# ==============================================================================
+
+# ==============================================================================
+# SERVICES CONFIGURATION
+# ==============================================================================
+services:
+
+  # ----------------------------------------------------------------------------
+  # SQL Server Database Service (vuteq-scanner-db)
+  # ----------------------------------------------------------------------------
+  # Database for VUTEQ Scanner Application - EF Core Code-First
+  # Updated: 2025-11-25 by Hassan - Removed old database, using only EF Core migrations
+  #
+  # IMPORTANT: Database is automatically created by EF Core migrations on API startup
+  # No manual initialization scripts are needed
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: vuteq-scanner-db
+    hostname: sqlserver-dev
+
+    # Environment configuration
+    environment:
+      # SQL Server licensing
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+
+      # Authentication
+      MSSQL_SA_PASSWORD: "Vuteq@Dev2025"
+
+      # Server configuration
+      MSSQL_TCP_PORT: 1433
+      MSSQL_COLLATION: "SQL_Latin1_General_CP1_CI_AS"
+
+      # Memory limits (adjust based on your system)
+      MSSQL_MEMORY_LIMIT_MB: 2048
+
+      # Agent configuration
+      MSSQL_AGENT_ENABLED: "true"
+
+    # Port mapping - expose to host for debugging with SSMS/Azure Data Studio
+    ports:
+      - "1433:1433"
+
+    # Volume mounts for database persistence
+    volumes:
+      # Persistent database files and logs (survives container recreation)
+      # SQL Server manages logs internally within /var/opt/mssql
+      - sqlserver-dev-data:/var/opt/mssql
+
+      # Mount initialization script (read-only)
+      - ./database/init-db.sql:/tmp/init-db.sql:ro
+
+      # Backup directory (optional, for manual backups)
+      - ../../../Databases/backups:/var/opt/mssql/backup
+
+    # Health check configuration
+    # Verifies SQL Server is accepting connections
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Vuteq@Dev2025 -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    # Resource limits (adjust based on your requirements)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network configuration
+    networks:
+      - vuteq-network
+
+  # ----------------------------------------------------------------------------
+  # ASP.NET Core Backend API Service
+  # ----------------------------------------------------------------------------
+  # Development API with hot-reload and debug ports
+  api:
+    build:
+      context: ../../Backend
+      dockerfile: ../Docker/development/Dockerfiles/Dockerfile.api
+      target: development
+
+    container_name: vuteq-api-dev
+    hostname: api-dev
+
+    # Environment variables for development
+    environment:
+      # ASP.NET Core configuration
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ASPNETCORE_URLS: "http://+:5000"
+
+      # Database connection
+      ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=VUTEQ_Scanner;User Id=sa;Password=Vuteq@Dev2025;TrustServerCertificate=True;MultipleActiveResultSets=true"
+
+      # JWT Configuration
+      JWT__Secret: "VuteqDevSecretKey2025!MinLength32Chars"
+      JWT__Issuer: "VuteqWMS"
+      JWT__Audience: "VuteqClients"
+      JWT__ExpiryMinutes: "480"
+
+      # Toyota API Configuration (QA Environment)
+      ToyotaAPI__QA__BaseUrl: "https://qa-api.toyota.com"
+      ToyotaAPI__QA__ClientId: "your-qa-client-id"
+      ToyotaAPI__QA__ClientSecret: "your-qa-client-secret"
+      ToyotaAPI__QA__TokenEndpoint: "/oauth/token"
+
+      # Multi-Site Configuration
+      MultiSite__Enabled: "true"
+      MultiSite__DefaultSiteCode: "TMH"
+
+      # Logging configuration
+      Logging__LogLevel__Default: "Debug"
+      Logging__LogLevel__Microsoft: "Information"
+      Logging__LogLevel__Microsoft.Hosting.Lifetime: "Information"
+
+      # CORS configuration for development
+      CORS__AllowedOrigins: "http://localhost:3000,http://localhost:3001"
+
+    # Port mapping - expose API and debug port
+    ports:
+      - "5000:5000"
+      - "5001:5001"  # Debug port
+
+    # Volume mounts for hot-reload
+    volumes:
+      - ../../Backend:/app:cached
+      - /app/bin
+      - /app/obj
+
+    # Wait for database to be ready
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network configuration
+    networks:
+      - vuteq-network
+
+  # ----------------------------------------------------------------------------
+  # Next.js Frontend Application Service
+  # ----------------------------------------------------------------------------
+  # Development frontend with hot-reload and fast refresh
+  frontend:
+    build:
+      context: ../../ScannerApp
+      dockerfile: ../Docker/development/Dockerfiles/Dockerfile.nextjs
+      target: development
+
+    container_name: vuteq-frontend-dev
+    hostname: frontend-dev
+
+    # Environment variables for development
+    environment:
+      # Next.js configuration
+      NODE_ENV: "development"
+      # IMPORTANT: NEXT_PUBLIC_* variables are used in browser (client-side)
+      # Browser cannot resolve Docker service names, so we use localhost
+      # This works because API is exposed on host port 5000 (ports: "5000:5000")
+      # Note: Removed /api suffix - endpoints already have it (e.g., /api/auth/login)
+      NEXT_PUBLIC_API_URL: "http://localhost:5000"
+
+      # Multi-site configuration
+      NEXT_PUBLIC_MULTI_SITE_ENABLED: "true"
+      NEXT_PUBLIC_DEFAULT_SITE: "TMH"
+
+      # Development features
+      NEXT_PUBLIC_ENABLE_DEBUG: "true"
+      WATCHPACK_POLLING: "true"  # Enable for Windows/WSL hot-reload
+
+    # Port mapping - expose Next.js dev server
+    ports:
+      - "3000:3000"
+
+    # Volume mounts for hot-reload
+    volumes:
+      - ../../ScannerApp:/app:cached
+      - /app/node_modules
+      - /app/.next
+
+    # Wait for API to be ready
+    depends_on:
+      api:
+        condition: service_healthy
+
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network configuration
+    networks:
+      - vuteq-network
+
+# ==============================================================================
+# VOLUMES CONFIGURATION
+# ==============================================================================
+volumes:
+  # SQL Server data persistence (includes logs managed by SQL Server)
+  sqlserver-dev-data:
+    driver: local
+    name: vuteq-sqlserver-dev-data
+
+# ==============================================================================
+# NETWORKS CONFIGURATION
+# ==============================================================================
+networks:
+  vuteq-network:
+    driver: bridge
+    name: vuteq-dev-network
