@@ -94,7 +94,7 @@ export const DASHBOARD_TILES: DashboardTile[] = [
     id: 'tile-007',
     title: 'Order Data',
     icon: 'clipboard-list',
-    route: '/upload-order',
+    route: '/orders',
     requiresRole: 'SUPERVISOR', // Accessible by SUPERVISOR, ADMIN only
   },
   {

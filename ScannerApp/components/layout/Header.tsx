@@ -56,7 +56,7 @@ export default function Header() {
 
   const isHomePage = pathname === '/';
   const isLoginPage = pathname === '/login';
-  const isUploadOrderPage = pathname === '/upload-order';
+  const isOrdersPage = pathname === '/orders';
 
   // Close dropdown when clicking outside
   // IMPORTANT: This hook MUST be called before any conditional returns
@@ -81,9 +81,9 @@ export default function Header() {
     setHasMounted(true);
   }, []);
 
-  // Fetch last upload time from API when on upload-order page
+  // Fetch last upload time from API when on orders page
   useEffect(() => {
-    if (!hasMounted || !isUploadOrderPage) return;
+    if (!hasMounted || !isOrdersPage) return;
 
     const fetchLastUploadTime = async () => {
       try {
@@ -116,7 +116,7 @@ export default function Header() {
     };
 
     fetchLastUploadTime();
-  }, [hasMounted, isUploadOrderPage]);
+  }, [hasMounted, isOrdersPage]);
 
   // Don't show header on login page
   // This return is AFTER all hooks, which is correct per Rules of Hooks
@@ -146,8 +146,8 @@ export default function Header() {
   const getPageTitle = () => {
     if (isHomePage) return 'Dashboard';
 
-    // Custom title for upload-order page
-    if (pathname === '/upload-order') return 'Order Data';
+    // Custom title for orders page
+    if (pathname === '/orders') return 'Order Data';
 
     const pathSegments = pathname.split('/').filter(Boolean);
     if (pathSegments.length === 0) return 'Dashboard';
@@ -185,7 +185,7 @@ export default function Header() {
     if (pathname === '/administration') {
       return 'Manage offices, warehouses, users, and dock monitor';
     }
-    if (pathname === '/upload-order') {
+    if (pathname === '/orders') {
       return 'Manage imported files and view planned order items';
     }
 

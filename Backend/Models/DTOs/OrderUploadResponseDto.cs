@@ -45,6 +45,11 @@ public class OrderUploadResponseDto
     public int TotalItemsCreated { get; set; }
 
     /// <summary>
+    /// Total number of unique manifests in this upload
+    /// </summary>
+    public int TotalManifestsCreated { get; set; }
+
+    /// <summary>
     /// Number of orders skipped (duplicates)
     /// </summary>
     public int OrdersSkipped { get; set; }

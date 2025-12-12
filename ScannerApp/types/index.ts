@@ -141,15 +141,15 @@ export interface SerialNumber {
 }
 
 export interface SkidBuildSession {
-  id: string;
+  sessionId: string;
   orderId: string;
-  skidManifestId: string;
-  currentStep: 1 | 2 | 3 | 4 | 5;
-  toyotaKanbans: ToyotaKanban[];
-  internalKanbans: InternalKanban[];
-  serialNumbers: SerialNumber[];
+  skidNumber: number;
+  status: string;
   startedAt: string;
-  completedAt: string | null;
+  completedAt?: string;
+  confirmationNumber?: string;
+  totalScans: number;
+  totalExceptions: number;
 }
 
 // ===== SHIPMENT TYPES =====

@@ -2,7 +2,7 @@
  * Order Data Page
  * Author: Hassan
  * Date: 2025-11-05
- * Last Updated: 2025-12-09 by Hassan - Moved search bar to same line as tabs (right-aligned)
+ * Last Updated: 2025-12-12 by Hassan - Added column sorting, renamed route to /orders
  *
  * Manages order data with three main views:
  *
@@ -15,6 +15,7 @@
  * - Delete functionality for uploaded files
  * - Click on file row to switch to Tab 2 with uploadId filter
  * - Pagination with rows per page options (10, 25, 50, 100)
+ * - Column sorting on all columns
  *
  * Tab 2 - Planned Orders (tblOrders):
  * - Table showing orders with summary information
@@ -23,13 +24,15 @@
  * - Columns: RealOrderNumber, Total Parts, DockCode, Departure Date, Order Date, Status
  * - Click on order row to switch to Tab 3 with orderId filter
  * - Pagination with rows per page options (10, 25, 50, 100)
+ * - Column sorting on all columns
  *
  * Tab 3 - Planned Parts:
  * - Table showing planned order items with full details
  * - Filter by specific order (when clicked from Tab 2)
  * - Clear filter to show all planned items
- * - Columns: PartNumber, Kanban, QPC, TotalBoxPlanned, ManifestNo, PalletizationCode, Short/Over
+ * - Columns: OrderNumber, PartNumber, Kanban, QPC, TotalBoxPlanned, ManifestNo, PalletizationCode, Short/Over
  * - Pagination with rows per page options (10, 25, 50, 100)
+ * - Column sorting on all columns
  *
  * Features:
  * - Mobile-responsive design
@@ -67,6 +70,7 @@ interface UploadedFile {
   status: 'success' | 'pending' | 'error' | 'warning';
   ordersCreated?: number;
   totalItemsCreated?: number;
+  totalManifestsCreated?: number;
   ordersSkipped?: number;
   skippedOrderNumbers?: string[];
 }
@@ -112,7 +116,13 @@ interface PlannedItem {
 
 type TabType = 'imported-files' | 'planned-orders' | 'planned-parts';
 
-export default function UploadOrderPage() {
+// Sort types for each table
+type FilesSortColumn = 'fileName' | 'uploadDate' | 'fileSize' | 'ordersCreated' | 'status';
+type OrdersSortColumn = 'realOrderNumber' | 'totalParts' | 'dockCode' | 'departureDate' | 'orderDate' | 'status';
+type PartsSortColumn = 'realOrderNumber' | 'partNumber' | 'kanbanNumber' | 'internalKanban' | 'qpc' | 'totalBoxPlanned' | 'manifestNo' | 'palletizationCode' | 'shortOver';
+type SortDirection = 'asc' | 'desc';
+
+export default function OrdersPage() {
   const router = useRouter();
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,6 +162,14 @@ export default function UploadOrderPage() {
   const [partsPage, setPartsPage] = useState(1);
   const [partsPerPage, setPartsPerPage] = useState(10);
 
+  // Sort state for each tab
+  const [filesSortColumn, setFilesSortColumn] = useState<FilesSortColumn | null>(null);
+  const [filesSortDirection, setFilesSortDirection] = useState<SortDirection>('asc');
+  const [ordersSortColumn, setOrdersSortColumn] = useState<OrdersSortColumn | null>(null);
+  const [ordersSortDirection, setOrdersSortDirection] = useState<SortDirection>('asc');
+  const [partsSortColumn, setPartsSortColumn] = useState<PartsSortColumn | null>(null);
+  const [partsSortDirection, setPartsSortDirection] = useState<SortDirection>('asc');
+
   // Load data on mount - upload history and orders (since Planned Orders is default tab)
   useEffect(() => {
     loadUploadHistory();
@@ -172,6 +190,7 @@ export default function UploadOrderPage() {
           status: upload.status as 'success' | 'pending' | 'error' | 'warning',
           ordersCreated: upload.ordersCreated,
           totalItemsCreated: upload.totalItemsCreated,
+          totalManifestsCreated: upload.totalManifestsCreated,
           ordersSkipped: upload.ordersSkipped,
           skippedOrderNumbers: upload.skippedOrderNumbers,
         }));
@@ -350,6 +369,7 @@ export default function UploadOrderPage() {
           status: response.data.status as 'success' | 'pending' | 'error' | 'warning',
           ordersCreated: response.data.ordersCreated,
           totalItemsCreated: response.data.totalItemsCreated,
+          totalManifestsCreated: response.data.totalManifestsCreated,
           ordersSkipped: response.data.ordersSkipped,
           skippedOrderNumbers: response.data.skippedOrderNumbers,
         };
@@ -549,6 +569,73 @@ export default function UploadOrderPage() {
   const filteredOrders = filterData(orders, searchQuery);
   const filteredPlannedItems = filterData(plannedItems, searchQuery);
 
+  // Sort handlers for each table
+  const handleFilesSort = (column: FilesSortColumn) => {
+    if (filesSortColumn === column) {
+      setFilesSortDirection(filesSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setFilesSortColumn(column);
+      setFilesSortDirection('asc');
+    }
+  };
+
+  const handleOrdersSort = (column: OrdersSortColumn) => {
+    if (ordersSortColumn === column) {
+      setOrdersSortDirection(ordersSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setOrdersSortColumn(column);
+      setOrdersSortDirection('asc');
+    }
+  };
+
+  const handlePartsSort = (column: PartsSortColumn) => {
+    if (partsSortColumn === column) {
+      setPartsSortDirection(partsSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setPartsSortColumn(column);
+      setPartsSortDirection('asc');
+    }
+  };
+
+  // Sort icon helper
+  const getSortIcon = (isActive: boolean, direction: SortDirection) => {
+    if (!isActive) return <i className="fa-light fa-sort ml-1 text-xs opacity-30"></i>;
+    return direction === 'asc'
+      ? <i className="fa-light fa-sort-up ml-1 text-xs"></i>
+      : <i className="fa-light fa-sort-down ml-1 text-xs"></i>;
+  };
+
+  // Generic sort function
+  const sortData = <T extends Record<string, any>>(
+    data: T[],
+    column: string | null,
+    direction: SortDirection
+  ): T[] => {
+    if (!column) return data;
+    return [...data].sort((a, b) => {
+      let aValue = a[column];
+      let bValue = b[column];
+
+      // Handle null/undefined
+      if (aValue === null || aValue === undefined) aValue = '';
+      if (bValue === null || bValue === undefined) bValue = '';
+
+      // Handle numbers
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return direction === 'asc' ? aValue - bValue : bValue - aValue;
+      }
+
+      // String comparison
+      const comparison = String(aValue).localeCompare(String(bValue));
+      return direction === 'asc' ? comparison : -comparison;
+    });
+  };
+
+  // Apply sorting to filtered data
+  const sortedFiles = sortData(filteredFiles, filesSortColumn, filesSortDirection);
+  const sortedOrders = sortData(filteredOrders, ordersSortColumn, ordersSortDirection);
+  const sortedPlannedItems = sortData(filteredPlannedItems, partsSortColumn, partsSortDirection);
+
   // Reset to page 1 when search query changes
   useEffect(() => {
     setFilesPage(1);
@@ -563,10 +650,10 @@ export default function UploadOrderPage() {
     return data.slice(startIndex, endIndex);
   };
 
-  // Apply pagination to filtered data
-  const paginatedFiles = paginateData(filteredFiles, filesPage, filesPerPage);
-  const paginatedOrders = paginateData(filteredOrders, ordersPage, ordersPerPage);
-  const paginatedPlannedItems = paginateData(filteredPlannedItems, partsPage, partsPerPage);
+  // Apply pagination to sorted data
+  const paginatedFiles = paginateData(sortedFiles, filesPage, filesPerPage);
+  const paginatedOrders = paginateData(sortedOrders, ordersPage, ordersPerPage);
+  const paginatedPlannedItems = paginateData(sortedPlannedItems, partsPage, partsPerPage);
 
   // Calculate total pages
   const filesTotalPages = Math.ceil(filteredFiles.length / filesPerPage);
@@ -915,18 +1002,45 @@ export default function UploadOrderPage() {
                           <table className="w-full text-left">
                             <thead className="bg-gray-50">
                               <tr className="border-b border-gray-200">
-                                <th className="px-4 py-3 text-sm font-semibold text-gray-700">File Name</th>
-                                <th className="px-4 py-3 text-sm font-semibold text-gray-700 hidden sm:table-cell">
-                                  Upload Date
+                                <th
+                                  className="px-4 py-3 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleFilesSort('fileName')}
+                                >
+                                  <div className="flex items-center">
+                                    File Name{getSortIcon(filesSortColumn === 'fileName', filesSortDirection)}
+                                  </div>
                                 </th>
-                                <th className="px-4 py-3 text-sm font-semibold text-gray-700 hidden md:table-cell">
-                                  File Size
+                                <th
+                                  className="px-4 py-3 text-sm font-semibold text-gray-700 hidden sm:table-cell cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleFilesSort('uploadDate')}
+                                >
+                                  <div className="flex items-center">
+                                    Upload Date{getSortIcon(filesSortColumn === 'uploadDate', filesSortDirection)}
+                                  </div>
                                 </th>
-                                <th className="px-4 py-3 text-sm font-semibold text-gray-700 hidden lg:table-cell">
-                                  Orders
+                                <th
+                                  className="px-4 py-3 text-sm font-semibold text-gray-700 hidden md:table-cell cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleFilesSort('fileSize')}
+                                >
+                                  <div className="flex items-center">
+                                    File Size{getSortIcon(filesSortColumn === 'fileSize', filesSortDirection)}
+                                  </div>
                                 </th>
-                                <th className="px-4 py-3 text-sm font-semibold text-gray-700 hidden lg:table-cell">
-                                  Status
+                                <th
+                                  className="px-4 py-3 text-sm font-semibold text-gray-700 hidden lg:table-cell cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleFilesSort('ordersCreated')}
+                                >
+                                  <div className="flex items-center">
+                                    Orders{getSortIcon(filesSortColumn === 'ordersCreated', filesSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 text-sm font-semibold text-gray-700 hidden lg:table-cell cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleFilesSort('status')}
+                                >
+                                  <div className="flex items-center">
+                                    Status{getSortIcon(filesSortColumn === 'status', filesSortDirection)}
+                                  </div>
                                 </th>
                                 <th className="px-4 py-3 text-sm font-semibold text-gray-700">
                                   Actions
@@ -957,7 +1071,7 @@ export default function UploadOrderPage() {
                                   <td className="px-4 py-4 text-sm text-gray-600 hidden lg:table-cell">
                                     {file.ordersCreated !== undefined ? (
                                       <span className="text-xs">
-                                        {file.ordersCreated} orders / {file.totalItemsCreated} items
+                                        {file.ordersCreated} orders / {file.totalManifestsCreated || 0} manifests / {file.totalItemsCreated} items
                                       </span>
                                     ) : (
                                       <span className="text-gray-400">-</span>
@@ -1097,12 +1211,54 @@ export default function UploadOrderPage() {
                           <table className="w-full text-left text-sm">
                             <thead className="bg-gray-50">
                               <tr className="border-b border-gray-200">
-                                <th className="px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">Order Number</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center">Total Parts</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap">Dock Code</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap">Planned Pickup</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap">Order Date</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap">Status</th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleOrdersSort('realOrderNumber')}
+                                >
+                                  <div className="flex items-center">
+                                    Order Number{getSortIcon(ordersSortColumn === 'realOrderNumber', ordersSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleOrdersSort('totalParts')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Total Parts{getSortIcon(ordersSortColumn === 'totalParts', ordersSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleOrdersSort('dockCode')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Dock Code{getSortIcon(ordersSortColumn === 'dockCode', ordersSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleOrdersSort('departureDate')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Planned Pickup{getSortIcon(ordersSortColumn === 'departureDate', ordersSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleOrdersSort('orderDate')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Order Date{getSortIcon(ordersSortColumn === 'orderDate', ordersSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleOrdersSort('status')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Status{getSortIcon(ordersSortColumn === 'status', ordersSortDirection)}
+                                  </div>
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1230,19 +1386,86 @@ export default function UploadOrderPage() {
                           <table className="w-full text-left text-sm">
                             <thead className="bg-gray-50">
                               <tr className="border-b border-gray-200">
-                                <th className="px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">Part Number</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap">Kanban</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap">Internal Kanban</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center">QPC</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap">Total Box Planned</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap">Manifest No</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap">Palletization Code</th>
-                                <th className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap">Short/Over</th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handlePartsSort('realOrderNumber')}
+                                >
+                                  <div className="flex items-center">
+                                    Order Number{getSortIcon(partsSortColumn === 'realOrderNumber', partsSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handlePartsSort('partNumber')}
+                                >
+                                  <div className="flex items-center">
+                                    Part Number{getSortIcon(partsSortColumn === 'partNumber', partsSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handlePartsSort('kanbanNumber')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Kanban{getSortIcon(partsSortColumn === 'kanbanNumber', partsSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handlePartsSort('internalKanban')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Internal Kanban{getSortIcon(partsSortColumn === 'internalKanban', partsSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handlePartsSort('qpc')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    QPC{getSortIcon(partsSortColumn === 'qpc', partsSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handlePartsSort('totalBoxPlanned')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Total Box Planned{getSortIcon(partsSortColumn === 'totalBoxPlanned', partsSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handlePartsSort('manifestNo')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Manifest No{getSortIcon(partsSortColumn === 'manifestNo', partsSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handlePartsSort('palletizationCode')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Palletization Code{getSortIcon(partsSortColumn === 'palletizationCode', partsSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handlePartsSort('shortOver')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Short/Over{getSortIcon(partsSortColumn === 'shortOver', partsSortDirection)}
+                                  </div>
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
                               {paginatedPlannedItems.map((item) => (
                                 <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                                    {item.realOrderNumber}
+                                  </td>
                                   <td className="px-4 py-3 text-gray-900 whitespace-nowrap font-medium">
                                     {item.partNumber}
                                   </td>

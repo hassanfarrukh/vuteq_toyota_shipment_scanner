@@ -40,6 +40,7 @@ export interface OrderUploadResponseDto {
   status: 'pending' | 'processing' | 'success' | 'error';
   ordersCreated: number;
   totalItemsCreated: number;
+  totalManifestsCreated?: number;
   ordersSkipped?: number;
   skippedOrderNumbers?: string[];
   extractedOrders: ExtractedOrderDto[];

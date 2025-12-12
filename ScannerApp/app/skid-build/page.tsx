@@ -2,6 +2,7 @@
  * Skid Build V2 Page - 5-Screen Workflow with FAB Menu
  * Author: Hassan
  * Date: 2025-11-03
+ * Updated: 2025-12-12 - Fixed TypeScript errors (error→errors, skidId→rawSkidId, onClick wrapper, Card style)
  * Updated: 2025-11-04 - MAJOR RESTRUCTURE: Removed separate exceptions screen, moved exceptions inline to Screen 2
  * Updated: 2025-11-04 - Screen numbering: Screen 4 is now Review/Submit, Screen 5 is Confirmation Number Display
  * Updated: 2025-11-04 - Exceptions now handled via MODAL POPUP on Screen 2 (not collapsible section)
@@ -428,17 +429,30 @@ export default function SkidBuildV2Page() {
       console.log('  status (207-208):', `"${status}"`);
       console.log('  zoneArea (209-211):', `"${zoneArea}"`);
 
-      // Validate required fields
-      if (!partNumber || !supplierCode || !dockCode) {
+      // UPDATED 2025-12-12 by Hassan:
+      // Use partNumberRepeat (positions 42-53) as PRIMARY part number source
+      // This field is RELIABLE across all Toyota Kanban formats:
+      // - Some formats have blank positions 1-30 (no part# at 12-22)
+      // - Some formats have identifiers at 1-30
+      // - Some formats have description at 1-30
+      // - BUT position 42-53 ALWAYS has the 12-char part number (with color code)
+      const effectivePartNumber = partNumberRepeat || partNumber;
+
+      // Validate required fields - use effectivePartNumber instead of partNumber
+      if (!effectivePartNumber || !supplierCode || !dockCode) {
         console.error('VALIDATION FAILED - Missing required fields');
+        console.error('  effectivePartNumber:', effectivePartNumber);
+        console.error('  supplierCode:', supplierCode);
+        console.error('  dockCode:', dockCode);
         return null;
       }
 
       console.log('✓ Toyota Kanban Parsed successfully!');
+      console.log('  Using effectivePartNumber:', effectivePartNumber);
       console.log('======================');
 
       return {
-        partNumber,
+        partNumber: effectivePartNumber, // Use the reliable part number
         description: partDescription,
         supplierCode,
         dockCode,
@@ -687,8 +701,8 @@ export default function SkidBuildV2Page() {
 
       if (!orderResponse.success || !orderResponse.data) {
         // Fallback to mock data if API fails
-        console.warn('API failed, using mock data:', orderResponse.error);
-        setError(`API Error: ${orderResponse.error}. Using mock data for development.`);
+        console.warn('API failed, using mock data:', orderResponse.errors);
+        setError(`API Error: ${orderResponse.errors}. Using mock data for development.`);
 
         // Mock planned items with 2 Toyota Kanbans for demo
         const mockPlanned: PlannedItem[] = [
@@ -738,7 +752,7 @@ export default function SkidBuildV2Page() {
       );
 
       if (!sessionResponse.success || !sessionResponse.data) {
-        setError(`Failed to start session: ${sessionResponse.error}`);
+        setError(`Failed to start session: ${sessionResponse.errors}`);
         setLoading(false);
         return;
       }
@@ -913,7 +927,7 @@ export default function SkidBuildV2Page() {
       );
 
       if (!exceptionResponse.success) {
-        setError(`Failed to record exception: ${exceptionResponse.error}`);
+        setError(`Failed to record exception: ${exceptionResponse.errors}`);
         setLoading(false);
         return;
       }
@@ -964,7 +978,7 @@ export default function SkidBuildV2Page() {
       );
 
       if (!completeResponse.success || !completeResponse.data) {
-        setError(`Failed to complete session: ${completeResponse.error}`);
+        setError(`Failed to complete session: ${completeResponse.errors}`);
         setLoading(false);
         return;
       }
@@ -1055,7 +1069,7 @@ export default function SkidBuildV2Page() {
 
           {/* SCREEN 1: Order Search */}
           {currentScreen === 1 && (
-            <Card style={{ backgroundColor: '#FCFCFC' }}>
+            <Card>
               <CardContent className="p-3 space-y-3">
                 {/* Header with Icon - Professional Style */}
                 <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
@@ -1147,7 +1161,7 @@ export default function SkidBuildV2Page() {
                         </div>
                         <div>
                           <span className="text-gray-600">SKID ID:</span>
-                          <p className="font-mono font-bold text-gray-900">{parsedQRData.skidId}</p>
+                          <p className="font-mono font-bold text-gray-900">{parsedQRData.rawSkidId}</p>
                         </div>
                         <div>
                           <span className="text-gray-600">Load/Transport ID:</span>
@@ -1233,7 +1247,7 @@ export default function SkidBuildV2Page() {
 
                     {/* Continue Button */}
                     <Button
-                      onClick={handleOrderSearchNext}
+                      onClick={() => handleOrderSearchNext()}
                       variant="success-light"
                       fullWidth
                       disabled={!orderData.owkNumber || !supplierCode || !orderData.plant || !orderData.dock}
@@ -1780,7 +1794,7 @@ export default function SkidBuildV2Page() {
                           );
 
                           if (!scanResponse.success) {
-                            setError(`Failed to record scan: ${scanResponse.error}`);
+                            setError(`Failed to record scan: ${scanResponse.errors}`);
                             setLoading(false);
                             return;
                           }

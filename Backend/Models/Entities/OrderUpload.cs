@@ -46,6 +46,11 @@ public class OrderUpload : AuditableEntity
     public int TotalItemsCreated { get; set; }
 
     /// <summary>
+    /// Total number of unique manifests in this upload
+    /// </summary>
+    public int TotalManifestsCreated { get; set; }
+
+    /// <summary>
     /// Supplier code from NAMC Detail sheet
     /// </summary>
     public int? SupplierCode { get; set; }

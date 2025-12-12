@@ -134,7 +134,15 @@ public class OrderUploadService : IOrderUploadService
             // Convert ParsedShipment to ExtractedOrderDto for unified processing
             extractedOrders = ConvertExcelShipmentsToOrders(excelResult.Shipments);
 
-            _logger.LogInformation("Excel parsed successfully. Extracted {OrderCount} orders", extractedOrders.Count);
+            // Count unique manifests from the shipments
+            int totalManifests = excelResult.Shipments
+                .Select(s => s.ManifestNo)
+                .Where(m => m > 0)
+                .Distinct()
+                .Count();
+
+            _logger.LogInformation("Excel parsed successfully. Extracted {OrderCount} orders from {ManifestCount} manifests",
+                extractedOrders.Count, totalManifests);
 
             // Store orders in database (NEW STRUCTURE V2: one order per OrderNumber)
             int ordersCreated = 0;
@@ -254,6 +262,7 @@ public class OrderUploadService : IOrderUploadService
                 uploadRecord.Status = finalStatus;
                 uploadRecord.OrdersCreated = ordersCreated;
                 uploadRecord.TotalItemsCreated = itemsCreated;
+                uploadRecord.TotalManifestsCreated = totalManifests;
 
                 await _uploadRepository.UpdateUploadAsync(uploadRecord);
             }
@@ -271,6 +280,7 @@ public class OrderUploadService : IOrderUploadService
                 Status = "success",
                 OrdersCreated = ordersCreated,
                 TotalItemsCreated = itemsCreated,
+                TotalManifestsCreated = totalManifests,
                 OrdersSkipped = ordersSkipped,
                 SkippedOrderNumbers = skippedOrderNumbers,
                 ExtractedOrders = extractedOrders
@@ -347,6 +357,7 @@ public class OrderUploadService : IOrderUploadService
                 ErrorMessage = u.ErrorMessage,
                 OrdersCreated = u.OrdersCreated,
                 TotalItemsCreated = u.TotalItemsCreated,
+                TotalManifestsCreated = u.TotalManifestsCreated,
                 OrdersSkipped = 0, // Historical records don't have this data
                 SkippedOrderNumbers = new List<string>()
             });
@@ -389,6 +400,7 @@ public class OrderUploadService : IOrderUploadService
                 ErrorMessage = upload.ErrorMessage,
                 OrdersCreated = upload.OrdersCreated,
                 TotalItemsCreated = upload.TotalItemsCreated,
+                TotalManifestsCreated = upload.TotalManifestsCreated,
                 OrdersSkipped = 0, // Historical records don't have this data
                 SkippedOrderNumbers = new List<string>()
             };
@@ -458,18 +470,18 @@ public class OrderUploadService : IOrderUploadService
 
     /// <summary>
     /// Convert Excel shipments to ExtractedOrderDto for unified processing
-    /// Groups shipments by ManifestNo + DockCode (one Order per combination)
+    /// Groups shipments by RealOrderNumber + DockCode (one Order per combination)
     /// </summary>
     private List<ExtractedOrderDto> ConvertExcelShipmentsToOrders(List<ParsedShipment> shipments)
     {
         var orders = new List<ExtractedOrderDto>();
 
-        // Group shipments by ManifestNo + DockCode
+        // Group shipments by RealOrderNumber + DockCode
         var groupedShipments = shipments
-            .GroupBy(s => new { s.ManifestNo, s.DockCode })
+            .GroupBy(s => new { s.RealOrderNumber, s.DockCode })
             .ToList();
 
-        _logger.LogInformation("Grouping {ShipmentCount} shipments into {GroupCount} orders (by ManifestNo + DockCode)",
+        _logger.LogInformation("Grouping {ShipmentCount} shipments into {GroupCount} orders (by RealOrderNumber + DockCode)",
             shipments.Count, groupedShipments.Count);
 
         foreach (var group in groupedShipments)
