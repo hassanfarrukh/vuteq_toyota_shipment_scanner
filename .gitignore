@@ -208,3 +208,4 @@ storybook-static/
 # PWA
 public/sw.js
 public/workbox-*.js
+*/wwwroot/uploads/orders

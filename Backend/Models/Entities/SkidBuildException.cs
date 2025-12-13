@@ -21,6 +21,12 @@ public class SkidBuildException : AuditableEntity
     public Guid OrderId { get; set; }
 
     /// <summary>
+    /// Session ID (nullable - exceptions can exist without active session)
+    /// Links the exception to a specific skid build session
+    /// </summary>
+    public Guid? SessionId { get; set; }
+
+    /// <summary>
     /// Skid number (NULL for order-level exceptions)
     /// </summary>
     public int? SkidNumber { get; set; }
@@ -46,6 +52,9 @@ public class SkidBuildException : AuditableEntity
     // Navigation properties
     [ForeignKey(nameof(OrderId))]
     public virtual Order Order { get; set; } = null!;
+
+    [ForeignKey(nameof(SessionId))]
+    public virtual SkidBuildSession? Session { get; set; }
 
     [ForeignKey(nameof(CreatedByUserId))]
     public virtual UserMaster? CreatedByUser { get; set; }

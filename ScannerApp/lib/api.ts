@@ -531,6 +531,14 @@ export async function getPlannedSkidsForShipment(
 // ===== SKID BUILD V2 APIs =====
 // Author: Hassan, Date: 2025-12-06
 // Updated: 2025-12-06 - Use apiClient with JWT auth instead of fetch
+// Updated: 2025-12-13 - Added ScanDetailDto for detailed scan information
+
+export interface ScanDetailDto {
+  skidNumber: string;
+  boxNumber: number;
+  internalKanban: string | null;
+  palletizationCode: string | null;
+}
 
 export interface SkidBuildPlannedItem {
   plannedItemId: string;
@@ -542,6 +550,7 @@ export interface SkidBuildPlannedItem {
   palletizationCode: string;
   externalOrderId: number;
   scannedCount: number;
+  scanDetails: ScanDetailDto[];
 }
 
 export interface SkidBuildOrder {
@@ -782,6 +791,145 @@ export async function completeSkidBuildSession(
       success: false,
       data: null,
       error: result.message || 'Failed to complete session',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Add exception
+// Author: Hassan, Date: 2025-12-14
+export async function addSkidBuildException(
+  sessionId: string,
+  orderId: string,
+  exceptionCode: string,
+  comments: string,
+  skidNumber?: number,
+  userId?: string
+): Promise<ApiResponse<{ exceptionId: string }>> {
+  try {
+    const response = await apiClient.post('/api/v1/skid-build/exception', {
+      sessionId,
+      orderId,
+      exceptionCode,
+      comments,
+      skidNumber,
+      userId: userId || 'unknown',
+    });
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to add exception',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Delete exception
+// Author: Hassan, Date: 2025-12-14
+export async function deleteSkidBuildException(
+  exceptionId: string
+): Promise<ApiResponse<boolean>> {
+  try {
+    const response = await apiClient.delete(`/api/v1/skid-build/exception/${exceptionId}`);
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: true,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: false,
+      error: result.message || 'Failed to delete exception',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: false,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// ===== SKID BUILD V2 GROUPED API =====
+// Author: Hassan, Date: 2025-12-12
+// Get order with items grouped by skid (for multi-skid workflow)
+
+export interface SkidGroupDto {
+  skidId: string;
+  manifestNo: number;
+  palletizationCode: string;
+  plannedKanbans: SkidBuildPlannedItem[];
+}
+
+export interface SkidBuildOrderGrouped {
+  orderId: string;
+  orderNumber: string;
+  dockCode: string;
+  supplierCode: string;
+  plantCode: string;
+  status: string;
+  skids: SkidGroupDto[];
+}
+
+export async function getSkidBuildOrderGrouped(
+  orderNumber: string,
+  dockCode: string
+): Promise<ApiResponse<SkidBuildOrderGrouped>> {
+  try {
+    const response = await apiClient.get(
+      `/api/v1/skid-build/order/${encodeURIComponent(orderNumber)}/grouped?dockCode=${encodeURIComponent(dockCode)}`
+    );
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to fetch grouped order',
       timestamp: new Date().toISOString(),
     };
   } catch (error) {

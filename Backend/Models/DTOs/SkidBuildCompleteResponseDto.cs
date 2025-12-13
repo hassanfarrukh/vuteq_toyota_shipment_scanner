@@ -1,16 +1,18 @@
 // Author: Hassan
 // Date: 2025-12-06
+// Updated: 2025-12-14 - Added Toyota API response fields
 // Description: Response DTO for completed skid build
 
 namespace Backend.Models.DTOs;
 
 /// <summary>
 /// Response when completing a skid build session
+/// Includes Toyota API submission status
 /// </summary>
 public class SkidBuildCompleteResponseDto
 {
     /// <summary>
-    /// Confirmation number (e.g., "SKB-1701234567890-1234")
+    /// Confirmation number (Toyota confirmation number if successful, internal reference otherwise)
     /// </summary>
     public string ConfirmationNumber { get; set; } = null!;
 
@@ -33,4 +35,21 @@ public class SkidBuildCompleteResponseDto
     /// When the session was completed
     /// </summary>
     public DateTime CompletedAt { get; set; }
+
+    // ===== TOYOTA API FIELDS =====
+
+    /// <summary>
+    /// Toyota API submission status: pending, confirmed, error
+    /// </summary>
+    public string? ToyotaSubmissionStatus { get; set; }
+
+    /// <summary>
+    /// Toyota API confirmation number (same as ConfirmationNumber if successful)
+    /// </summary>
+    public string? ToyotaConfirmationNumber { get; set; }
+
+    /// <summary>
+    /// Error message from Toyota API if submission failed
+    /// </summary>
+    public string? ToyotaErrorMessage { get; set; }
 }

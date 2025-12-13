@@ -101,6 +101,7 @@ builder.Services.AddScoped<IOrderUploadRepository, OrderUploadRepository>();
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<ISkidBuildRepository, SkidBuildRepository>();
 builder.Services.AddScoped<IShipmentLoadRepository, ShipmentLoadRepository>();
+builder.Services.AddScoped<IToyotaConfigRepository, ToyotaConfigRepository>();
 
 // Register services (Scoped lifetime for per-request instances)
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -114,6 +115,15 @@ builder.Services.AddScoped<IExcelParserService, ExcelParserService>();
 
 // Toyota Validation Service
 builder.Services.AddScoped<IToyotaValidationService, ToyotaValidationService>();
+
+// Toyota API Service (OAuth + Skid Build + Shipment Load)
+builder.Services.AddScoped<IToyotaApiService, ToyotaApiService>();
+
+// Toyota API Configuration Service (Admin-only configuration management)
+builder.Services.AddScoped<IToyotaConfigService, ToyotaConfigService>();
+
+// HTTP Client Factory for API calls
+builder.Services.AddHttpClient();
 
 builder.Services.AddScoped<IOrderUploadService, OrderUploadService>();
 builder.Services.AddScoped<IPlannedItemService, PlannedItemService>();

@@ -21,7 +21,7 @@ interface LoginRequest {
 interface LoginResponse {
   token: string;
   user: {
-    userId: string;
+    id: string;
     username: string;
     name: string;
     email?: string;
@@ -34,7 +34,7 @@ interface ApiResponse {
   success: boolean;
   message?: string;
   user?: {
-    userId: string;
+    id: string;
     username: string;
     name: string;
     email?: string;
@@ -54,7 +54,7 @@ export async function login(username: string, password: string): Promise<{
   success: boolean;
   token?: string;
   user?: {
-    userId: string;
+    id: string;
     username: string;
     name: string;
     email?: string;
@@ -92,7 +92,7 @@ export async function login(username: string, password: string): Promise<{
 
       clientLogger.debug('Auth API', 'Login successful - storing JWT token', {
         tokenLength: token.length,
-        userId: user.userId,
+        userId: user.id,
         username: user.username,
         role: user.role,
       });

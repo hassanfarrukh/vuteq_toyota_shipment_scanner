@@ -191,6 +191,54 @@ public class Order : AuditableEntity
     [MaxLength(500)]
     public string? ShipmentNotes { get; set; }
 
+    // ===== TOYOTA SKID BUILD API FIELDS =====
+    /// <summary>
+    /// Toyota API confirmation number from Skid Build submission
+    /// </summary>
+    [MaxLength(100)]
+    public string? ToyotaSkidBuildConfirmationNumber { get; set; }
+
+    /// <summary>
+    /// Toyota Skid Build submission status: pending, submitted, confirmed, error
+    /// </summary>
+    [MaxLength(20)]
+    public string? ToyotaSkidBuildStatus { get; set; }
+
+    /// <summary>
+    /// Error message from Toyota Skid Build API (if failed)
+    /// </summary>
+    [MaxLength(500)]
+    public string? ToyotaSkidBuildErrorMessage { get; set; }
+
+    /// <summary>
+    /// Timestamp when Skid Build was submitted to Toyota API
+    /// </summary>
+    public DateTime? ToyotaSkidBuildSubmittedAt { get; set; }
+
+    // ===== TOYOTA SHIPMENT LOAD API FIELDS =====
+    /// <summary>
+    /// Toyota API confirmation number from Shipment Load submission
+    /// </summary>
+    [MaxLength(100)]
+    public string? ToyotaShipmentConfirmationNumber { get; set; }
+
+    /// <summary>
+    /// Toyota Shipment Load submission status: pending, submitted, confirmed, error
+    /// </summary>
+    [MaxLength(20)]
+    public string? ToyotaShipmentStatus { get; set; }
+
+    /// <summary>
+    /// Error message from Toyota Shipment Load API (if failed)
+    /// </summary>
+    [MaxLength(500)]
+    public string? ToyotaShipmentErrorMessage { get; set; }
+
+    /// <summary>
+    /// Timestamp when Shipment Load was submitted to Toyota API
+    /// </summary>
+    public DateTime? ToyotaShipmentSubmittedAt { get; set; }
+
     // Navigation properties
     public virtual ICollection<PlannedItem> PlannedItems { get; set; } = new List<PlannedItem>();
     public virtual ICollection<SkidBuildSession> SkidBuildSessions { get; set; } = new List<SkidBuildSession>();

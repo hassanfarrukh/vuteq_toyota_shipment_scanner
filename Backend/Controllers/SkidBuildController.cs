@@ -114,6 +114,113 @@ public class SkidBuildController : ControllerBase
     }
 
     /// <summary>
+    /// Get order by order number and dock code with items grouped by skid
+    /// </summary>
+    /// <remarks>
+    /// Look up an order by RealOrderNumber and DockCode, returns order details with planned items grouped by ManifestNo.
+    ///
+    /// **Sample Request:**
+    /// ```
+    /// GET /api/v1/skid-build/order/2023080205/grouped?dockCode=V8
+    /// ```
+    ///
+    /// **Sample Response:**
+    /// ```json
+    /// {
+    ///   "success": true,
+    ///   "message": "Order 2023080205 retrieved successfully with 2 skids and 5 total items",
+    ///   "data": {
+    ///     "orderId": "550e8400-e29b-41d4-a716-446655440000",
+    ///     "orderNumber": "2023080205",
+    ///     "dockCode": "V8",
+    ///     "supplierCode": "02806",
+    ///     "plantCode": "02TMI",
+    ///     "status": "Planned",
+    ///     "skids": [
+    ///       {
+    ///         "skidId": "678A",
+    ///         "manifestNo": 12345678,
+    ///         "palletizationCode": "LB",
+    ///         "plannedKanbans": [
+    ///           {
+    ///             "plannedItemId": "110e8400-e29b-41d4-a716-446655440111",
+    ///             "partNumber": "681010E250",
+    ///             "kanbanNumber": "VH98",
+    ///             "qpc": 45,
+    ///             "totalBoxPlanned": 1,
+    ///             "manifestNo": 12345678,
+    ///             "palletizationCode": "LB",
+    ///             "scannedCount": 0
+    ///           }
+    ///         ]
+    ///       },
+    ///       {
+    ///         "skidId": "679A",
+    ///         "manifestNo": 12345679,
+    ///         "palletizationCode": "LB",
+    ///         "plannedKanbans": [
+    ///           {
+    ///             "plannedItemId": "110e8400-e29b-41d4-a716-446655440222",
+    ///             "partNumber": "681010E251",
+    ///             "kanbanNumber": "VH99",
+    ///             "qpc": 30,
+    ///             "totalBoxPlanned": 2,
+    ///             "manifestNo": 12345679,
+    ///             "palletizationCode": "LB",
+    ///             "scannedCount": 0
+    ///           }
+    ///         ]
+    ///       }
+    ///     ]
+    ///   }
+    /// }
+    /// ```
+    /// </remarks>
+    /// <param name="orderNumber">Order number (e.g., "2023080205")</param>
+    /// <param name="dockCode">Dock code (e.g., "V8")</param>
+    /// <returns>Order details with planned items grouped by skid</returns>
+    /// <response code="200">Order retrieved successfully</response>
+    /// <response code="401">Unauthorized - JWT token required</response>
+    /// <response code="404">Order not found</response>
+    /// <response code="500">Internal server error</response>
+    [HttpGet("order/{orderNumber}/grouped")]
+    [ProducesResponseType(typeof(ApiResponse<SkidBuildOrderGroupedDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<SkidBuildOrderGroupedDto>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetOrderByNumberAndDockGrouped(
+        [FromRoute] string orderNumber,
+        [FromQuery] string dockCode)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(orderNumber) || string.IsNullOrWhiteSpace(dockCode))
+            {
+                return BadRequest(ApiResponse<SkidBuildOrderGroupedDto>.ErrorResponse(
+                    "Invalid request",
+                    "Order number and dock code are required"));
+            }
+
+            var result = await _skidBuildService.GetOrderByNumberAndDockGroupedAsync(orderNumber, dockCode);
+
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            return NotFound(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error retrieving grouped order: {OrderNumber}-{DockCode}",
+                orderNumber, dockCode);
+            return StatusCode(500, ApiResponse<SkidBuildOrderGroupedDto>.ErrorResponse(
+                "Internal server error",
+                "An unexpected error occurred while retrieving grouped order"));
+        }
+    }
+
+    /// <summary>
     /// Start a new skid build session
     /// </summary>
     /// <remarks>
@@ -366,6 +473,66 @@ public class SkidBuildController : ControllerBase
             return StatusCode(500, ApiResponse<SkidBuildException>.ErrorResponse(
                 "Internal server error",
                 "An unexpected error occurred while recording exception"));
+        }
+    }
+
+    /// <summary>
+    /// Delete an exception by ID
+    /// </summary>
+    /// <remarks>
+    /// Delete a skid build exception record.
+    ///
+    /// **Sample Request:**
+    /// ```
+    /// DELETE /api/v1/skid-build/exception/990e8400-e29b-41d4-a716-446655440999
+    /// ```
+    ///
+    /// **Sample Response:**
+    /// ```json
+    /// {
+    ///   "success": true,
+    ///   "message": "Exception 990e8400-e29b-41d4-a716-446655440999 deleted successfully",
+    ///   "data": true
+    /// }
+    /// ```
+    /// </remarks>
+    /// <param name="exceptionId">Exception ID</param>
+    /// <returns>Delete confirmation</returns>
+    /// <response code="200">Exception deleted successfully</response>
+    /// <response code="404">Exception not found</response>
+    /// <response code="401">Unauthorized - JWT token required</response>
+    /// <response code="500">Internal server error</response>
+    [HttpDelete("exception/{exceptionId}")]
+    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> DeleteException([FromRoute] Guid exceptionId)
+    {
+        try
+        {
+            if (exceptionId == Guid.Empty)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResponse(
+                    "Invalid request",
+                    "Exception ID is required"));
+            }
+
+            var result = await _skidBuildService.DeleteExceptionAsync(exceptionId);
+
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            return NotFound(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error deleting exception: {ExceptionId}", exceptionId);
+            return StatusCode(500, ApiResponse<bool>.ErrorResponse(
+                "Internal server error",
+                "An unexpected error occurred while deleting exception"));
         }
     }
 

@@ -72,6 +72,7 @@ public class VuteqDbContext : DbContext
     public DbSet<Setting> Settings { get; set; }
     public DbSet<DockMonitorSetting> DockMonitorSettings { get; set; }
     public DbSet<InternalKanbanSetting> InternalKanbanSettings { get; set; }
+    public DbSet<ToyotaApiConfig> ToyotaApiConfigs { get; set; }
     #endregion
 
     /// <summary>
@@ -304,6 +305,14 @@ public class VuteqDbContext : DbContext
         {
             // DockMonitorSetting is now global (system-wide) - no FK relationship to User
             // UserId is nullable for backwards compatibility but not used
+        });
+        #endregion
+
+        #region ToyotaApiConfig Configurations
+        modelBuilder.Entity<ToyotaApiConfig>(entity =>
+        {
+            entity.HasIndex(e => new { e.Environment, e.IsActive });
+            entity.HasIndex(e => e.Environment);
         });
         #endregion
 

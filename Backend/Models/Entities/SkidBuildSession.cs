@@ -41,43 +41,6 @@ public class SkidBuildSession : AuditableEntity
 
     public DateTime? CompletedAt { get; set; }
 
-    /// <summary>
-    /// DEPRECATED: Old confirmation number field (kept for backward compatibility)
-    /// Use ToyotaConfirmationNumber and InternalReferenceNumber instead
-    /// </summary>
-    [MaxLength(100)]
-    public string? ConfirmationNumber { get; set; }
-
-    /// <summary>
-    /// Toyota API confirmation number (received from Toyota SCS API)
-    /// NEW: Added for Toyota API integration
-    /// </summary>
-    [MaxLength(100)]
-    public string? ToyotaConfirmationNumber { get; set; }
-
-    /// <summary>
-    /// Internal reference number generated before Toyota submission
-    /// NEW: Used as placeholder until Toyota API integration is complete
-    /// Format: SKB-{timestamp}-{random}
-    /// </summary>
-    [MaxLength(100)]
-    public string? InternalReferenceNumber { get; set; }
-
-    /// <summary>
-    /// Toyota API submission status
-    /// NEW: Track Toyota API submission lifecycle
-    /// Values: "pending", "submitted", "confirmed", "error"
-    /// </summary>
-    [MaxLength(20)]
-    public string? ToyotaSubmissionStatus { get; set; }
-
-    /// <summary>
-    /// Toyota API error message (if submission failed)
-    /// NEW: Store error details from Toyota API
-    /// </summary>
-    [MaxLength(500)]
-    public string? ToyotaErrorMessage { get; set; }
-
     // Navigation properties
     [ForeignKey(nameof(UserId))]
     public virtual UserMaster User { get; set; } = null!;

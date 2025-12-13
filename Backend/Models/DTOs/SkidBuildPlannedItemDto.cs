@@ -1,8 +1,35 @@
 // Author: Hassan
 // Date: 2025-12-06
+// Updated: 2025-12-13 - Added ScanDetails with SkidNumber for proper grouping
 // Description: DTO for planned items in Skid Build workflow
 
 namespace Backend.Models.DTOs;
+
+/// <summary>
+/// Scan detail for a scanned item
+/// </summary>
+public class ScanDetailDto
+{
+    /// <summary>
+    /// Skid number (e.g., "123")
+    /// </summary>
+    public string SkidNumber { get; set; } = null!;
+
+    /// <summary>
+    /// Box number (1-999)
+    /// </summary>
+    public int BoxNumber { get; set; }
+
+    /// <summary>
+    /// Internal kanban number scanned
+    /// </summary>
+    public string? InternalKanban { get; set; }
+
+    /// <summary>
+    /// Palletization code (e.g., "LB")
+    /// </summary>
+    public string? PalletizationCode { get; set; }
+}
 
 /// <summary>
 /// Planned item details for Skid Build
@@ -48,4 +75,10 @@ public class SkidBuildPlannedItemDto
     /// Count of boxes already scanned for this item
     /// </summary>
     public int ScannedCount { get; set; }
+
+    /// <summary>
+    /// List of scan details for scanned items (replaces InternalKanbans)
+    /// Includes SkidNumber, BoxNumber, InternalKanban, PalletizationCode
+    /// </summary>
+    public List<ScanDetailDto> ScanDetails { get; set; } = new List<ScanDetailDto>();
 }

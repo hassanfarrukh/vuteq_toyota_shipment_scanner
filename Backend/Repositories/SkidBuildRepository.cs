@@ -1,8 +1,10 @@
 // Author: Hassan
 // Date: 2025-12-06
+// Updated: 2025-12-13 - Added ScanDetails support
 // Description: Repository for Skid Build operations - handles data access using EF Core
 
 using Backend.Data;
+using Backend.Models.DTOs;
 using Backend.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,6 +18,7 @@ public interface ISkidBuildRepository
     // Order operations
     Task<Order?> GetOrderByNumberAndDockAsync(string orderNumber, string dockCode);
     Task<Order?> GetOrderByIdAsync(Guid orderId);
+    Task UpdateOrderAsync(Order order);
 
     // Session operations
     Task<SkidBuildSession> CreateSessionAsync(SkidBuildSession session);
@@ -26,11 +29,14 @@ public interface ISkidBuildRepository
     Task<SkidScan> CreateScanAsync(SkidScan scan);
     Task<IEnumerable<SkidScan>> GetScansBySessionAsync(Guid sessionId);
     Task<int> GetScannedCountByPlannedItemAsync(Guid plannedItemId);
+    Task<List<ScanDetailDto>> GetScanDetailsByPlannedItemAsync(Guid plannedItemId);
 
     // Exception operations
     Task<SkidBuildException> CreateExceptionAsync(SkidBuildException exception);
     Task<IEnumerable<SkidBuildException>> GetExceptionsBySessionAsync(Guid sessionId);
     Task<IEnumerable<SkidBuildException>> GetExceptionsByOrderAsync(Guid orderId);
+    Task<SkidBuildException?> GetExceptionByIdAsync(Guid exceptionId);
+    Task<bool> DeleteExceptionAsync(Guid exceptionId);
 }
 
 /// <summary>
@@ -83,6 +89,24 @@ public class SkidBuildRepository : ISkidBuildRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving order by ID: {OrderId}", orderId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Update order (for Toyota API response fields)
+    /// </summary>
+    public async Task UpdateOrderAsync(Order order)
+    {
+        try
+        {
+            _context.Orders.Update(order);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Order updated: {OrderId}", order.OrderId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating order: {OrderId}", order.OrderId);
             throw;
         }
     }
@@ -219,6 +243,35 @@ public class SkidBuildRepository : ISkidBuildRepository
         }
     }
 
+    /// <summary>
+    /// Get list of scan details for a planned item
+    /// Returns all scan details (SkidNumber, BoxNumber, InternalKanban, PalletizationCode) for this planned item
+    /// Ordered by SkidNumber, then BoxNumber
+    /// </summary>
+    public async Task<List<ScanDetailDto>> GetScanDetailsByPlannedItemAsync(Guid plannedItemId)
+    {
+        try
+        {
+            return await _context.SkidScans
+                .Where(s => s.PlannedItemId == plannedItemId)
+                .OrderBy(s => s.SkidNumber)
+                .ThenBy(s => s.BoxNumber)
+                .Select(s => new ScanDetailDto
+                {
+                    SkidNumber = s.SkidNumber,
+                    BoxNumber = s.BoxNumber,
+                    InternalKanban = s.InternalKanban,
+                    PalletizationCode = s.PalletizationCode
+                })
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting scan details for planned item: {PlannedItemId}", plannedItemId);
+            throw;
+        }
+    }
+
     #endregion
 
     #region Exception Operations
@@ -278,6 +331,51 @@ public class SkidBuildRepository : ISkidBuildRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving exceptions for order: {OrderId}", orderId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get exception by ID
+    /// </summary>
+    public async Task<SkidBuildException?> GetExceptionByIdAsync(Guid exceptionId)
+    {
+        try
+        {
+            return await _context.SkidBuildExceptions
+                .FirstOrDefaultAsync(e => e.ExceptionId == exceptionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving exception by ID: {ExceptionId}", exceptionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Delete exception by ID
+    /// </summary>
+    public async Task<bool> DeleteExceptionAsync(Guid exceptionId)
+    {
+        try
+        {
+            var exception = await _context.SkidBuildExceptions
+                .FirstOrDefaultAsync(e => e.ExceptionId == exceptionId);
+
+            if (exception == null)
+            {
+                _logger.LogWarning("Exception not found for deletion: {ExceptionId}", exceptionId);
+                return false;
+            }
+
+            _context.SkidBuildExceptions.Remove(exception);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Skid build exception deleted: {ExceptionId}", exceptionId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting exception: {ExceptionId}", exceptionId);
             throw;
         }
     }

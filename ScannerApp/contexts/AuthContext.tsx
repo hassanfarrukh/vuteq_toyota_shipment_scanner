@@ -140,14 +140,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       clientLogger.debug('AuthContext', 'Mapping backend user to AuthUser format', {
-        backendUserId: result.user.userId,
+        backendUserId: result.user.id,
         backendUsername: result.user.username,
         backendRole: result.user.role,
       });
 
       // Map backend user to AuthUser format
       const authUser: AuthUser = {
-        id: result.user.userId,
+        id: result.user.id,
         username: result.user.username,
         name: result.user.name,
         role: mapBackendRoleToUserRole(result.user.role),

@@ -67,14 +67,17 @@
  *               used to filter data. Backend API still receives selectedLocations as array with single item for compatibility. (Hassan)
  * Updated: 2025-12-01 - Integrated LocationContext: After saving Dock Monitor settings, calls refreshLocation() to update
  *               global location in Header immediately without page refresh. (Hassan)
+ * Updated: 2025-12-14 - Added Toyota API Settings tab for managing Toyota API configurations (QA and PROD environments).
+ *               Full CRUD operations: create, read, update, delete, and test connection functionality. (Hassan)
  *
- * Admin-only page with 6 tabs:
+ * Admin-only page with 7 tabs:
  * 1. Office Management - Manage office locations (CONNECTED TO API)
  * 2. Warehouse Management - Manage warehouse facilities (CONNECTED TO API)
  * 3. Internal Kanban - Configure kanban duplication rules (CONNECTED TO API)
  * 4. Parts Maintenance - Manage parts and inventory items (currently hidden)
  * 5. User Management - Manage user accounts and permissions (CONNECTED TO API)
  * 6. Dock Monitor Settings - Configure dock monitor thresholds and display (CONNECTED TO API)
+ * 7. Toyota API Settings - Manage Toyota API configurations for QA and PROD (CONNECTED TO API)
  */
 
 'use client';
@@ -94,9 +97,10 @@ import { getUsers, createUser as apiCreateUser, updateUser as apiUpdateUser, del
 import { getOffices, createOffice as apiCreateOffice, updateOffice as apiUpdateOffice, deleteOffice as apiDeleteOffice, Office as ApiOffice, OfficeDto } from '@/lib/api/offices';
 import { getWarehouses, createWarehouse as apiCreateWarehouse, updateWarehouse as apiUpdateWarehouse, deleteWarehouse as apiDeleteWarehouse, Warehouse as ApiWarehouse, WarehouseDto } from '@/lib/api/warehouses';
 import { getInternalKanbanSettings, saveInternalKanbanSettings, getDockMonitorSettings, saveDockMonitorSettings, InternalKanbanSettings, DockMonitorSettings } from '@/lib/api/settings';
+import { getAllToyotaConfigs, createToyotaConfig, updateToyotaConfig, deleteToyotaConfig, testToyotaConnection, ToyotaConfigResponse, ToyotaConfigCreate, ToyotaConfigUpdate, TOYOTA_CONFIG_DEFAULTS } from '@/lib/api/toyota-config';
 import { fileLogger } from '@/lib/logger';
 
-type Tab = 'office' | 'warehouse' | 'internal-kanban' | 'parts' | 'user' | 'dock-monitor';
+type Tab = 'office' | 'warehouse' | 'internal-kanban' | 'parts' | 'user' | 'dock-monitor' | 'toyota-api';
 type DisplayMode = 'FULL' | 'SHIPMENT_ONLY' | 'SKID_ONLY' | 'COMPLETION_ONLY';
 
 // Part interface
@@ -169,12 +173,14 @@ export default function AdministrationPage() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [isLoadingKanbanSettings, setIsLoadingKanbanSettings] = useState(false);
   const [isLoadingDockSettings, setIsLoadingDockSettings] = useState(false);
+  const [isLoadingToyotaConfigs, setIsLoadingToyotaConfigs] = useState(true);
 
   // State for data arrays
   const [offices, setOffices] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [parts, setParts] = useState<Part[]>(INITIAL_PARTS);
   const [users, setUsers] = useState<any[]>([]);
+  const [toyotaConfigs, setToyotaConfigs] = useState<ToyotaConfigResponse[]>([]);
 
   // Slider panel states
   const [isAddOfficeOpen, setIsAddOfficeOpen] = useState(false);
@@ -185,6 +191,8 @@ export default function AdministrationPage() {
   const [isEditPartOpen, setIsEditPartOpen] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
+  const [isAddToyotaConfigOpen, setIsAddToyotaConfigOpen] = useState(false);
+  const [isEditToyotaConfigOpen, setIsEditToyotaConfigOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
 
   // Form states for Office
@@ -217,6 +225,18 @@ export default function AdministrationPage() {
     username: '', name: '', password: '', email: '', supervisor: false, menuLevel: 'Scanner', operation: '', code: ''
   });
 
+  // Form states for Toyota Config
+  const [toyotaConfigForm, setToyotaConfigForm] = useState({
+    environment: 'QA',
+    applicationName: '',
+    clientId: '',
+    clientSecret: '',
+    tokenUrl: TOYOTA_CONFIG_DEFAULTS.QA.tokenUrl,
+    apiBaseUrl: TOYOTA_CONFIG_DEFAULTS.QA.apiBaseUrl,
+    isActive: true
+  });
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+
   // Internal Kanban Settings state
   const [kanbanSettings, setKanbanSettings] = useState<InternalKanbanSettings>({
     allowDuplicates: false,
@@ -240,6 +260,7 @@ export default function AdministrationPage() {
     fetchOffices();
     fetchWarehouses();
     fetchUsers();
+    fetchToyotaConfigs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -347,6 +368,22 @@ export default function AdministrationPage() {
     }
 
     setIsLoadingUsers(false);
+  };
+
+  // Fetch Toyota Configs from API
+  const fetchToyotaConfigs = async () => {
+    setIsLoadingToyotaConfigs(true);
+    setError(null);
+
+    const result = await getAllToyotaConfigs();
+
+    if (result.success && result.data) {
+      setToyotaConfigs(result.data);
+    } else {
+      setError(result.error || 'Failed to load Toyota API configurations');
+    }
+
+    setIsLoadingToyotaConfigs(false);
   };
 
   // Fetch Internal Kanban settings from API
@@ -817,6 +854,159 @@ export default function AdministrationPage() {
     setTimeout(() => setSuccess(null), 3000);
   };
 
+  // Toyota Config CRUD handlers
+  const handleAddToyotaConfig = () => {
+    setToyotaConfigForm({
+      environment: 'QA',
+      applicationName: '',
+      clientId: '',
+      clientSecret: '',
+      tokenUrl: TOYOTA_CONFIG_DEFAULTS.QA.tokenUrl,
+      apiBaseUrl: TOYOTA_CONFIG_DEFAULTS.QA.apiBaseUrl,
+      isActive: true
+    });
+    setIsAddToyotaConfigOpen(true);
+  };
+
+  const handleEditToyotaConfig = (configId: string) => {
+    const config = toyotaConfigs.find(c => c.configId === configId);
+    if (config) {
+      setToyotaConfigForm({
+        environment: config.environment,
+        applicationName: config.applicationName || '',
+        clientId: config.clientId,
+        clientSecret: '', // Don't populate secret (it's masked)
+        tokenUrl: config.tokenUrl,
+        apiBaseUrl: config.apiBaseUrl,
+        isActive: config.isActive
+      });
+      setEditingItem(config);
+      setIsEditToyotaConfigOpen(true);
+    }
+  };
+
+  const handleDeleteToyotaConfig = async (configId: string) => {
+    const config = toyotaConfigs.find(c => c.configId === configId);
+    if (!config) return;
+
+    const confirmMessage = `Are you sure you want to delete Toyota API configuration for ${config.environment}${config.applicationName ? ' (' + config.applicationName + ')' : ''}?`;
+    if (window.confirm(confirmMessage)) {
+      setError(null);
+      setSuccess(null);
+
+      const result = await deleteToyotaConfig(configId);
+
+      if (result.success) {
+        setSuccess('Toyota API configuration deleted successfully!');
+        await fetchToyotaConfigs();
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError(result.error || 'Failed to delete Toyota API configuration');
+      }
+    }
+  };
+
+  const handleSaveToyotaConfig = async () => {
+    setError(null);
+    setSuccess(null);
+
+    // Validate required fields
+    if (!toyotaConfigForm.environment || !toyotaConfigForm.clientId || !toyotaConfigForm.tokenUrl || !toyotaConfigForm.apiBaseUrl) {
+      setError('Please fill in all required fields (Environment, Client ID, Token URL, API Base URL)');
+      return;
+    }
+
+    // For new configs, client secret is required
+    if (!isEditToyotaConfigOpen && !toyotaConfigForm.clientSecret) {
+      setError('Client Secret is required for new configurations');
+      return;
+    }
+
+    try {
+      let result;
+      if (isEditToyotaConfigOpen && editingItem) {
+        // Update existing config
+        const updateData: ToyotaConfigUpdate = {
+          environment: toyotaConfigForm.environment,
+          applicationName: toyotaConfigForm.applicationName || undefined,
+          clientId: toyotaConfigForm.clientId,
+          tokenUrl: toyotaConfigForm.tokenUrl,
+          apiBaseUrl: toyotaConfigForm.apiBaseUrl,
+          isActive: toyotaConfigForm.isActive,
+        };
+
+        // Only include client secret if it was changed
+        if (toyotaConfigForm.clientSecret) {
+          updateData.clientSecret = toyotaConfigForm.clientSecret;
+        }
+
+        result = await updateToyotaConfig(editingItem.configId, updateData);
+      } else {
+        // Create new config
+        const createData: ToyotaConfigCreate = {
+          environment: toyotaConfigForm.environment,
+          applicationName: toyotaConfigForm.applicationName || undefined,
+          clientId: toyotaConfigForm.clientId,
+          clientSecret: toyotaConfigForm.clientSecret,
+          tokenUrl: toyotaConfigForm.tokenUrl,
+          apiBaseUrl: toyotaConfigForm.apiBaseUrl,
+          isActive: toyotaConfigForm.isActive,
+        };
+
+        result = await createToyotaConfig(createData);
+      }
+
+      if (result.success) {
+        setSuccess(isEditToyotaConfigOpen ? 'Toyota API configuration updated successfully!' : 'Toyota API configuration created successfully!');
+        setIsAddToyotaConfigOpen(false);
+        setIsEditToyotaConfigOpen(false);
+        setEditingItem(null);
+        await fetchToyotaConfigs();
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError(result.error || 'Failed to save Toyota API configuration');
+      }
+    } catch (err) {
+      fileLogger.error('ToyotaConfigSave', 'Exception occurred during Toyota config save', {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined
+      });
+      setError('An unexpected error occurred');
+    }
+  };
+
+  const handleTestConnection = async (configId: string) => {
+    setIsTestingConnection(true);
+    setError(null);
+    setSuccess(null);
+
+    const result = await testToyotaConnection(configId);
+
+    if (result.success && result.data) {
+      const testResult = result.data;
+      if (testResult.success) {
+        setSuccess(`Connection successful! Token preview: ${testResult.tokenPreview || 'N/A'}. Expires in: ${testResult.expiresIn || 'N/A'} seconds.`);
+        setTimeout(() => setSuccess(null), 5000);
+      } else {
+        setError(testResult.message || 'Connection test failed');
+      }
+    } else {
+      setError(result.error || 'Failed to test connection');
+    }
+
+    setIsTestingConnection(false);
+  };
+
+  // Handle environment change to auto-fill URLs
+  const handleToyotaEnvChange = (env: string) => {
+    setToyotaConfigForm(prev => ({
+      ...prev,
+      environment: env,
+      tokenUrl: env === 'QA' ? TOYOTA_CONFIG_DEFAULTS.QA.tokenUrl : TOYOTA_CONFIG_DEFAULTS.PROD.tokenUrl,
+      apiBaseUrl: env === 'QA' ? TOYOTA_CONFIG_DEFAULTS.QA.apiBaseUrl : TOYOTA_CONFIG_DEFAULTS.PROD.apiBaseUrl,
+    }));
+  };
+
   return (
     <div className="fixed inset-0 flex flex-col">
       {/* Background - Fixed, doesn't scroll */}
@@ -886,6 +1076,17 @@ export default function AdministrationPage() {
               >
                 <i className="fa-light fa-desktop" style={{ fontSize: '20px', color: '#253262' }}></i>
                 Dock Monitor
+              </button>
+              <button
+                onClick={() => setActiveTab('toyota-api')}
+                className={`flex items-center gap-2 px-6 py-3 text-base font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  activeTab === 'toyota-api'
+                    ? 'border-[#253262] text-[#253262]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <i className="fa-light fa-cloud-arrow-up" style={{ fontSize: '20px', color: '#253262' }}></i>
+                Toyota API
               </button>
               {/* Parts Maintenance tab hidden - will be re-enabled when feature is complete */}
               {/* <button
@@ -1224,6 +1425,121 @@ export default function AdministrationPage() {
             </Card>
 
             {/* User Action Buttons - OUTSIDE the card */}
+            <div className="flex justify-end">
+              <Button
+                onClick={() => router.push('/')}
+                variant="primary"
+                className="w-full sm:w-auto"
+              >
+                <i className="fa-light fa-home mr-2"></i>
+                Back to Dashboard
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'toyota-api' && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Toyota API Configuration</CardTitle>
+                  <Button onClick={handleAddToyotaConfig} size="md" variant="primary">
+                    <i className="fa-light fa-plus mr-2"></i>
+                    Add Configuration
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {isLoadingToyotaConfigs ? (
+                  <div className="flex justify-center items-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#253262]"></div>
+                  </div>
+                ) : toyotaConfigs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                    <i className="fa fa-cloud-arrow-up text-6xl text-gray-300 mb-4"></i>
+                    <p className="text-lg">No Toyota API configurations found</p>
+                    <p className="text-sm mt-2">Add a configuration to connect to Toyota API</p>
+                  </div>
+                ) : (
+                  <div className="w-full overflow-x-auto">
+                    <table className="w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Environment</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Application</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Client ID</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">API Base URL</th>
+                          <th className="px-6 py-4 text-center text-sm font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-4 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {toyotaConfigs.map((config) => (
+                          <tr key={config.configId} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 text-base">
+                              <span className={`px-3 py-1 text-sm font-semibold rounded-full ${
+                                config.environment === 'QA'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {config.environment}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-base text-gray-900">{config.applicationName || '-'}</td>
+                            <td className="px-6 py-4 text-base text-gray-900 font-mono text-sm">{config.clientId}</td>
+                            <td className="px-6 py-4 text-base text-gray-600 text-sm truncate max-w-xs" title={config.apiBaseUrl}>
+                              {config.apiBaseUrl}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              {config.isActive ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                  <i className="fa fa-circle-check mr-1"></i>
+                                  Active
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                  <i className="fa fa-circle-xmark mr-1"></i>
+                                  Inactive
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-3">
+                                <button
+                                  onClick={() => handleTestConnection(config.configId)}
+                                  className="text-blue-600 hover:text-blue-900"
+                                  disabled={isTestingConnection}
+                                  title="Test Connection"
+                                >
+                                  <i className={`fa-light ${isTestingConnection ? 'fa-spinner fa-spin' : 'fa-plug-circle-check'} text-blue-600`} style={{ fontSize: '20px' }}></i>
+                                </button>
+                                <button
+                                  onClick={() => handleEditToyotaConfig(config.configId)}
+                                  className="text-primary-600 hover:text-primary-900"
+                                  title="Edit"
+                                >
+                                  <i className="fa-light fa-edit text-blue-600" style={{ fontSize: '20px' }}></i>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteToyotaConfig(config.configId)}
+                                  className="text-error-600 hover:text-error-900"
+                                  title="Delete"
+                                >
+                                  <i className="fa-light fa-trash text-red-600" style={{ fontSize: '20px' }}></i>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Toyota API Action Buttons */}
             <div className="flex justify-end">
               <Button
                 onClick={() => router.push('/')}
@@ -2715,6 +3031,212 @@ export default function AdministrationPage() {
               Save Changes
             </Button>
             <Button onClick={() => setIsEditPartOpen(false)} variant="error" className="flex-1">
+              <i className="fa-light fa-xmark mr-2"></i>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </SlideOutPanel>
+
+      {/* Toyota Config Add Panel */}
+      <SlideOutPanel
+        isOpen={isAddToyotaConfigOpen}
+        onClose={() => setIsAddToyotaConfigOpen(false)}
+        title="Add Toyota API Configuration"
+        width="lg"
+      >
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Environment *</label>
+              <select
+                value={toyotaConfigForm.environment}
+                onChange={(e) => handleToyotaEnvChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option value="QA">QA</option>
+                <option value="PROD">PROD</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Application Name</label>
+              <Input
+                value={toyotaConfigForm.applicationName}
+                onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, applicationName: e.target.value})}
+                placeholder="e.g., VUTEQ Scanner App"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Client ID *</label>
+            <Input
+              value={toyotaConfigForm.clientId}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, clientId: e.target.value})}
+              placeholder="Enter Client ID from Azure AD"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Client Secret *</label>
+            <Input
+              type="password"
+              value={toyotaConfigForm.clientSecret}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, clientSecret: e.target.value})}
+              placeholder="Enter Client Secret"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Token URL *</label>
+            <Input
+              value={toyotaConfigForm.tokenUrl}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, tokenUrl: e.target.value})}
+              placeholder="https://login.microsoftonline.com/..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              OAuth2 token endpoint URL
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">API Base URL *</label>
+            <Input
+              value={toyotaConfigForm.apiBaseUrl}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, apiBaseUrl: e.target.value})}
+              placeholder="https://api.scs.toyota.com/..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Base URL for Toyota API endpoints
+            </p>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={toyotaConfigForm.isActive}
+                onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, isActive: e.target.checked})}
+                className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
+              />
+              <span className="text-sm font-medium text-gray-700">Set as Active Configuration</span>
+            </label>
+            <p className="text-xs text-gray-500 ml-6">
+              Only one configuration per environment can be active at a time
+            </p>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button onClick={handleSaveToyotaConfig} variant="success-light" className="flex-1">
+              <i className="fa-light fa-floppy-disk mr-2"></i>
+              Save Configuration
+            </Button>
+            <Button onClick={() => setIsAddToyotaConfigOpen(false)} variant="error" className="flex-1">
+              <i className="fa-light fa-xmark mr-2"></i>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </SlideOutPanel>
+
+      {/* Toyota Config Edit Panel */}
+      <SlideOutPanel
+        isOpen={isEditToyotaConfigOpen}
+        onClose={() => setIsEditToyotaConfigOpen(false)}
+        title="Edit Toyota API Configuration"
+        width="lg"
+      >
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Environment *</label>
+              <select
+                value={toyotaConfigForm.environment}
+                onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, environment: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled
+              >
+                <option value="QA">QA</option>
+                <option value="PROD">PROD</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Application Name</label>
+              <Input
+                value={toyotaConfigForm.applicationName}
+                onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, applicationName: e.target.value})}
+                placeholder="e.g., VUTEQ Scanner App"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Client ID *</label>
+            <Input
+              value={toyotaConfigForm.clientId}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, clientId: e.target.value})}
+              placeholder="Enter Client ID from Azure AD"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Client Secret</label>
+            <Input
+              type="password"
+              value={toyotaConfigForm.clientSecret}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, clientSecret: e.target.value})}
+              placeholder="Leave blank to keep current secret"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Leave blank if you don't want to update the secret
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Token URL *</label>
+            <Input
+              value={toyotaConfigForm.tokenUrl}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, tokenUrl: e.target.value})}
+              placeholder="https://login.microsoftonline.com/..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              OAuth2 token endpoint URL
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">API Base URL *</label>
+            <Input
+              value={toyotaConfigForm.apiBaseUrl}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, apiBaseUrl: e.target.value})}
+              placeholder="https://api.scs.toyota.com/..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Base URL for Toyota API endpoints
+            </p>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={toyotaConfigForm.isActive}
+                onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, isActive: e.target.checked})}
+                className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
+              />
+              <span className="text-sm font-medium text-gray-700">Set as Active Configuration</span>
+            </label>
+            <p className="text-xs text-gray-500 ml-6">
+              Only one configuration per environment can be active at a time
+            </p>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button onClick={handleSaveToyotaConfig} variant="success-light" className="flex-1">
+              <i className="fa-light fa-floppy-disk mr-2"></i>
+              Save Changes
+            </Button>
+            <Button onClick={() => setIsEditToyotaConfigOpen(false)} variant="error" className="flex-1">
               <i className="fa-light fa-xmark mr-2"></i>
               Cancel
             </Button>

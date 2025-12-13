@@ -4,16 +4,19 @@ using Backend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace Backend.Data.Migrations
+namespace Backend.Migrations
 {
     [DbContext(typeof(VuteqDbContext))]
-    partial class VuteqDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251213190325_ToyotaApiConfigIntegration")]
+    partial class ToyotaApiConfigIntegration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1428,7 +1431,7 @@ namespace Backend.Data.Migrations
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("SessionId")
+                    b.Property<Guid?>("SkidBuildSessionSessionId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int?>("SkidNumber")
@@ -1448,7 +1451,7 @@ namespace Backend.Data.Migrations
 
                     b.HasIndex("OrderId");
 
-                    b.HasIndex("SessionId");
+                    b.HasIndex("SkidBuildSessionSessionId");
 
                     b.ToTable("tblSkidBuildExceptions");
                 });
@@ -2283,15 +2286,13 @@ namespace Backend.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Backend.Models.Entities.SkidBuildSession", "Session")
+                    b.HasOne("Backend.Models.Entities.SkidBuildSession", null)
                         .WithMany("SkidBuildExceptions")
-                        .HasForeignKey("SessionId");
+                        .HasForeignKey("SkidBuildSessionSessionId");
 
                     b.Navigation("CreatedByUser");
 
                     b.Navigation("Order");
-
-                    b.Navigation("Session");
                 });
 
             modelBuilder.Entity("Backend.Models.Entities.SkidBuildSession", b =>
