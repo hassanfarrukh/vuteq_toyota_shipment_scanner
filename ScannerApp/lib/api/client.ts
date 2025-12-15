@@ -14,11 +14,38 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { clientLogger } from '@/lib/logger';
 
-// API Base URL
-// In Docker: NEXT_PUBLIC_API_URL should be http://api:5000 (using service name)
-// Local dev: http://localhost:5000
-// Note: Don't add /api suffix here - endpoints already have it
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+// API Base URL - Runtime Dynamic Configuration
+// This approach allows the app to work on ANY machine without hardcoding IP addresses
+// Priority:
+// 1. NEXT_PUBLIC_API_URL environment variable (if explicitly set)
+// 2. Runtime detection based on window.location (browser client-side)
+// 3. Fallback to localhost for SSR/build time
+
+function getApiBaseUrl(): string {
+  // If explicitly set in environment, use it (allows override)
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  // Runtime detection (client-side only)
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol; // http: or https:
+    const hostname = window.location.hostname; // IP address or domain
+
+    // If accessing via localhost, API is on localhost:5000
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:5000';
+    }
+
+    // If accessing via IP address or domain, API is on same host:5000
+    return `${protocol}//${hostname}:5000`;
+  }
+
+  // Fallback for SSR/build time (will be replaced at runtime in browser)
+  return 'http://localhost:5000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({

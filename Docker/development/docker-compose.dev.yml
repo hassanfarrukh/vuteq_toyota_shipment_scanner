@@ -172,6 +172,7 @@ services:
       context: ../../ScannerApp
       dockerfile: ../Docker/development/Dockerfiles/Dockerfile.nextjs
       target: development
+      # No NEXT_PUBLIC_API_URL build arg needed - we use runtime detection
 
     container_name: vuteq-frontend-dev
     hostname: frontend-dev
@@ -180,11 +181,13 @@ services:
     environment:
       # Next.js configuration
       NODE_ENV: "development"
-      # IMPORTANT: NEXT_PUBLIC_* variables are used in browser (client-side)
-      # Browser cannot resolve Docker service names, so we use localhost
-      # This works because API is exposed on host port 5000 (ports: "5000:5000")
-      # Note: Removed /api suffix - endpoints already have it (e.g., /api/auth/login)
-      NEXT_PUBLIC_API_URL: "http://localhost:5000"
+
+      # REMOVED NEXT_PUBLIC_API_URL - Now using runtime detection in client.ts
+      # The API URL is automatically determined based on window.location
+      # This allows deployment on ANY machine without configuration:
+      #   - Access via localhost:3000 -> API at localhost:5000
+      #   - Access via 192.168.1.18:3000 -> API at 192.168.1.18:5000
+      #   - Access via any-ip:3000 -> API at any-ip:5000
 
       # Multi-site configuration
       NEXT_PUBLIC_MULTI_SITE_ENABLED: "true"
@@ -199,10 +202,12 @@ services:
       - "3000:3000"
 
     # Volume mounts for hot-reload
+    # CRITICAL FIX: Removed /app/.next anonymous volume
+    # The .next volume was caching old builds with hardcoded API URLs
+    # Now Next.js rebuilds properly when code changes, and runtime detection works
     volumes:
       - ../../ScannerApp:/app:cached
       - /app/node_modules
-      - /app/.next
 
     # Wait for API to be ready
     depends_on:

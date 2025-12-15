@@ -58,10 +58,26 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowNextJsFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
+        // In development: Allow any origin for flexibility (deployment on any machine/IP)
+        // In production: Restrict to specific origins
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.SetIsOriginAllowed(_ => true) // Allow any origin in dev mode
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials();
+        }
+        else
+        {
+            // Production: Restrict to specific origins
+            var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins")
+                .Get<string[]>() ?? new[] { "http://localhost:3000" };
+
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials();
+        }
     });
 });
 

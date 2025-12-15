@@ -49,6 +49,10 @@ RUN npm ci --include=dev
 # Note: In docker-compose.dev.yml, we mount the source as volume for hot-reload
 COPY . ./
 
+# REMOVED: Build-time NEXT_PUBLIC_API_URL configuration
+# Now using runtime detection in client.ts based on window.location
+# This eliminates hardcoded IP addresses and allows deployment on any machine
+
 # Set environment variables
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
