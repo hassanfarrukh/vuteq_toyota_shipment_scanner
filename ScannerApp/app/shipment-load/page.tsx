@@ -10,6 +10,12 @@
  * Updated: 2025-12-08 - CRITICAL: Fixed Toyota Manifest parsing to use INDIVIDUAL fields
  * Updated: 2025-12-08 - Integrated Shipment Load APIs (getShipmentLoadRoute, scanShipmentLoadSkid, completeShipmentLoad)
  * Updated: 2025-12-08 - Changed from mock data to real API calls with JWT authentication
+ * Updated: 2025-12-17 - Integrated validate-order API on QR scan to get actual skid count
+ * Updated: 2025-12-17 - FIXED: Replaced hardcoded 'user-001' with actual authenticated user from AuthContext
+ * Updated: 2025-12-17 - SCREEN 2 FIELDS UPDATED: Replaced carrierName/driverName/notes with separate first/last names for driver and supplier
+ * Updated: 2025-12-17 - SCREEN 3 SKIDS: Integrated getOrderSkids API to show actual built skids from tblSkidScans (001A, 001B, etc.)
+ * Updated: 2025-12-17 - FIXED: Changed grouping to match Toyota API - SkidNumber + PalletizationCode (not SkidSide)
+ * Updated: 2025-12-17 - CRITICAL FIX: Added sessionId to scanShipmentLoadSkid API call to resolve "session not found" error
  *
  * SCREEN FLOW:
  * 1. Scan Pickup Route QR → Parse and store → Continue to Screen 2
@@ -41,6 +47,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import Scanner from '@/components/ui/Scanner';
 import Button from '@/components/ui/Button';
 import Card, { CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -51,8 +58,16 @@ import type { ScanResult } from '@/types';
 import {
   getShipmentLoadRoute,
   scanShipmentLoadSkid,
-  completeShipmentLoad,
-  type PlannedOrder as ApiPlannedOrder
+  completeShipmentLoadSession,
+  startShipmentLoadSession,
+  updateShipmentLoadSession,
+  validateShipmentLoadOrder,
+  getOrderSkids,
+  type PlannedOrder as ApiPlannedOrder,
+  type StartSessionResponse,
+  type ValidateOrderResponse,
+  type OrderSkidsResponse,
+  type SkidDto,
 } from '@/lib/api';
 
 // Screen types
@@ -69,45 +84,46 @@ const EXCEPTION_TYPES = [
 
 // Data interfaces
 interface PickupRouteData {
+  orderNumber: string;
   routeNumber: string;
   plant: string;
   supplierCode: string;
   dockCode: string;
+  pickupDateTime: string; // ISO 8601 format: YYYY-MM-DDTHH:MM:SS (for API use)
+  pickupDate: string;     // YYYY-MM-DD format
+  pickupTime: string;     // HH:MM format
   estimatedSkids: number;
   rawQRValue: string;
 }
 
 interface TrailerData {
   trailerNumber: string;
+  driverFirstName: string;
+  driverLastName: string;
   sealNumber: string;
-  carrierName: string;
-  driverName: string;
-  notes: string;
+  supplierFirstName: string;
+  supplierLastName: string;
 }
 
 interface PlannedSkid {
-  orderId: string;
+  skidId: string;           // "001A"
+  skidNumber: string;       // "001"
+  skidSide: string | null;  // "A" or "B"
+  palletizationCode: string | null;
+  scannedAt: string | null;
   orderNumber: string;
   dockCode: string;
-  plantCode: string;
-  supplierCode: string;
-  palletizationCode: string;  // Individual field - NOT combined
-  mros: number;
-  partCount: number;
-  destination: string;
   isScanned: boolean;
 }
 
 interface ScannedSkid {
   id: string;
-  orderId: string;
-  orderNumber: string;
-  dockCode: string;
+  skidId: string;           // "001", "002", etc.
+  manifestNo: number;
   palletizationCode: string;
   mros: string;
-  skidId: string;
-  partCount: number;
-  destination: string;
+  orderNumber: string;
+  dockCode: string;
   timestamp: string;
 }
 
@@ -120,6 +136,7 @@ interface Exception {
 
 export default function ShipmentLoadV2Page() {
   const router = useRouter();
+  const { user } = useAuth();
 
   // Screen state
   const [currentScreen, setCurrentScreen] = useState<Screen>(1);
@@ -129,13 +146,18 @@ export default function ShipmentLoadV2Page() {
   // Screen 1: Pickup Route Data
   const [pickupRouteData, setPickupRouteData] = useState<PickupRouteData | null>(null);
 
+  // Session data from API
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [actualSkidCount, setActualSkidCount] = useState<number>(0);
+
   // Screen 2: Trailer Information
   const [trailerData, setTrailerData] = useState<TrailerData>({
     trailerNumber: '',
+    driverFirstName: '',
+    driverLastName: '',
     sealNumber: '',
-    carrierName: '',
-    driverName: '',
-    notes: '',
+    supplierFirstName: '',
+    supplierLastName: '',
   });
 
   // Screen 3: Planned and Scanned Skids
@@ -165,56 +187,94 @@ export default function ShipmentLoadV2Page() {
 
   /**
    * Parse Pickup Route QR Code
-   * Fixed-Position Format (50 characters):
-   * Example: "02TMIHL56408   2024021301     IDZE06Load202402121411"
+   * Fixed-Position Format (54-byte Driver Checksheet - Toyota spec):
+   * Example: "26MTMFB05474   2025121134     JAAJ17Load20251211181000"
    *
-   * Position Map:
-   * - Pos 2-7: Plant Code (TMIHL)
-   * - Pos 5-7: Dock Code (HL)
-   * - Pos 7-12: Supplier (56408)
-   * - Pos 15-23: Order Date (20240213)
-   * - Pos 23-25: Sequence (01)
-   * - Pos 30-36: Route (IDZE06)
-   * - Pos 36-40: Load Type (Load)
-   * - Pos 40-48: Pickup Date (20240212)
-   * - Pos 48-52: Pickup Time (1411)
+   * Position Map (1-indexed in spec, 0-indexed in JavaScript):
+   * - Pos 0-5: Plant Code (26MTM)
+   * - Pos 5-7: Dock Code (FB)
+   * - Pos 7-12: Supplier Code (05474)
+   * - Pos 12-15: Supplier Ship Dock (spaces)
+   * - Pos 15-27: Order Number (2025121134  ) - 12 chars with trailing spaces
+   * - Pos 27-36: Route Code (JAAJ17   ) - 9 chars with trailing spaces
+   * - Pos 36-40: Filler ("Load")
+   * - Pos 40-54: Pickup DateTime (20251211181000) - YYYYMMDDHHMMSS (14 chars)
    *
    * Author: Hassan, 2025-11-05
+   * Updated: 2025-12-17 - Fixed to use correct 54-byte Driver Checksheet format
    */
   const parsePickupRouteQR = (qrValue: string): PickupRouteData | null => {
     try {
-      // Expected length: 50 characters
-      if (qrValue.length < 50) {
-        console.error('Invalid pickup route QR format. Expected 50-character format.');
+      // Expected length: 54 characters
+      if (qrValue.length < 54) {
+        console.error(`Invalid pickup route QR format. Expected 54-character format, got ${qrValue.length} characters.`);
         return null;
       }
 
-      const plantCode = qrValue.substring(2, 7).trim();      // Pos 2-7: TMIHL
-      const dockCode = qrValue.substring(5, 7).trim();       // Pos 5-7: HL
-      const supplierCode = qrValue.substring(7, 12).trim();  // Pos 7-12: 56408
-      const orderDate = qrValue.substring(15, 23).trim();    // Pos 15-23: 20240213
-      const sequence = qrValue.substring(23, 25).trim();     // Pos 23-25: 01
-      const route = qrValue.substring(30, 36).trim();        // Pos 30-36: IDZE06
-      const loadType = qrValue.substring(36, 40).trim();     // Pos 36-40: Load
-      const pickupDate = qrValue.substring(40, 48).trim();   // Pos 40-48: 20240212
-      const pickupTime = qrValue.substring(48, 52).trim();   // Pos 48-52: 1411
+      // Extract fields using 0-indexed substring (Toyota spec is 1-indexed)
+      const plantCode = qrValue.substring(0, 5).trim();           // Pos 0-5: 26MTM
+      const dockCode = qrValue.substring(5, 7).trim();            // Pos 5-7: FB
+      const supplierCode = qrValue.substring(7, 12).trim();       // Pos 7-12: 05474
+      const supplierShipDock = qrValue.substring(12, 15).trim();  // Pos 12-15: (spaces/unused)
+      const orderNumber = qrValue.substring(15, 27).trim();       // Pos 15-27: 2025121134 (trim spaces)
+      const routeCode = qrValue.substring(27, 36).trim();         // Pos 27-36: JAAJ17 (trim spaces)
+      const filler = qrValue.substring(36, 40);                   // Pos 36-40: "Load"
+      const pickupDateTime = qrValue.substring(40, 54);           // Pos 40-54: 20251211181000 (YYYYMMDDHHMMSS)
 
-      const fullOrderNumber = orderDate + sequence;          // 2024021301
+      console.log('=== PICKUP ROUTE QR PARSING (54-BYTE FORMAT) ===');
+      console.log('Raw input:', qrValue);
+      console.log('Length:', qrValue.length);
+      console.log('Extracted fields:');
+      console.log('  plantCode (0-5):', `"${plantCode}"`);
+      console.log('  dockCode (5-7):', `"${dockCode}"`);
+      console.log('  supplierCode (7-12):', `"${supplierCode}"`);
+      console.log('  supplierShipDock (12-15):', `"${supplierShipDock}"`);
+      console.log('  orderNumber (15-27):', `"${orderNumber}"`);
+      console.log('  routeCode (27-36):', `"${routeCode}"`);
+      console.log('  filler (36-40):', `"${filler}"`);
+      console.log('  pickupDateTime (40-54):', `"${pickupDateTime}"`);
+
+      // Convert pickup datetime (YYYYMMDDHHMMSS) to ISO 8601 format and separate date/time
+      let pickupDateTimeISO = '';
+      let pickupDate = '';
+      let pickupTime = '';
+      if (pickupDateTime.length === 14) {
+        const year = pickupDateTime.substring(0, 4);
+        const month = pickupDateTime.substring(4, 6);
+        const day = pickupDateTime.substring(6, 8);
+        const hour = pickupDateTime.substring(8, 10);
+        const minute = pickupDateTime.substring(10, 12);
+        const second = pickupDateTime.substring(12, 14);
+        pickupDateTimeISO = `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+        pickupDate = `${year}-${month}-${day}`;
+        pickupTime = `${hour}:${minute}`;
+        console.log('  Parsed Pickup DateTime (ISO):', pickupDateTimeISO);
+        console.log('  Parsed Pickup Date:', pickupDate);
+        console.log('  Parsed Pickup Time:', pickupTime);
+      }
+
+      // Validate required fields
+      if (!plantCode || !dockCode || !supplierCode || !routeCode) {
+        console.error('Invalid pickup route data - missing required fields');
+        return null;
+      }
+
+      console.log('✓ Pickup Route QR Parsed successfully!');
+      console.log('======================');
 
       // For estimatedSkids, we'll use a default value since it's not in the QR
       // This will be replaced with actual planned skid data from the system
       const estimatedSkids = 5; // Default value
 
-      if (!plantCode || !dockCode || !supplierCode || !route) {
-        console.error('Invalid pickup route data - missing required fields');
-        return null;
-      }
-
       return {
-        routeNumber: route,
+        orderNumber,
+        routeNumber: routeCode,
         plant: plantCode,
         supplierCode,
         dockCode,
+        pickupDateTime: pickupDateTimeISO,
+        pickupDate,
+        pickupTime,
         estimatedSkids,
         rawQRValue: qrValue,
       };
@@ -227,8 +287,9 @@ export default function ShipmentLoadV2Page() {
   /**
    * Screen 1: Handle Pickup Route QR Scan
    * Updated: 2025-11-05 - Added draft session recovery
+   * Updated: 2025-12-17 - Call validate-order API to get actual skid count
    */
-  const handlePickupRouteScan = (result: ScanResult) => {
+  const handlePickupRouteScan = async (result: ScanResult) => {
     console.log('Pickup route scan result:', result);
 
     const parsedData = parsePickupRouteQR(result.scannedValue);
@@ -273,14 +334,56 @@ export default function ShipmentLoadV2Page() {
       }
     }
 
-    // Successfully parsed - new session
-    setPickupRouteData(parsedData);
+    // Call validate-order API to get actual skid count
+    setLoading(true);
     setError(null);
+
+    try {
+      console.log('Validating order:', parsedData.orderNumber, 'Dock:', parsedData.dockCode);
+
+      const validateResponse = await validateShipmentLoadOrder(
+        parsedData.orderNumber,
+        parsedData.dockCode
+      );
+
+      if (!validateResponse.success || !validateResponse.data) {
+        setError(validateResponse.error || 'Order not found or skid-build not complete.');
+        setLoading(false);
+        return;
+      }
+
+      const orderData: ValidateOrderResponse = validateResponse.data;
+
+      // Check if skid build is complete OR skid count is zero
+      if (orderData.skidCount === 0 || !orderData.skidBuildComplete) {
+        setError(`Skid for order number ${parsedData.orderNumber} is not built. Please build the skid and then continue!`);
+        setLoading(false);
+        return;
+      }
+
+      console.log('Order validated successfully!');
+      console.log('Actual skid count:', orderData.skidCount);
+
+      // Store actual skid count
+      setActualSkidCount(orderData.skidCount);
+
+      // Successfully parsed and validated - new session
+      setPickupRouteData(parsedData);
+      setError(null);
+    } catch (err) {
+      console.error('Error validating order:', err);
+      setError('Failed to validate order. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   /**
    * Screen 1: Continue to Trailer Information
    * Updated: 2025-12-08 - Call API to get planned orders for route
+   * Updated: 2025-12-17 - Use session/start API with orderNumber and dockCode
+   * Updated: 2025-12-17 - Fixed to use actual authenticated user instead of hardcoded ID
+   * Updated: 2025-12-17 - Integrated getOrderSkids to fetch actual skids from tblSkidScans
    */
   const handlePickupRouteContinue = async () => {
     if (!pickupRouteData) {
@@ -288,41 +391,75 @@ export default function ShipmentLoadV2Page() {
       return;
     }
 
+    // Validate user authentication
+    if (!user?.id) {
+      setError('User not authenticated. Please log in again.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      // Call API to get orders for this route
-      const response = await getShipmentLoadRoute(pickupRouteData.routeNumber);
+      // Call session/start API with orderNumber and dockCode
+      const sessionResponse = await startShipmentLoadSession({
+        routeNumber: pickupRouteData.routeNumber,
+        supplierCode: pickupRouteData.supplierCode,
+        pickupDateTime: pickupRouteData.pickupDateTime,
+        userId: user.id,
+        orderNumber: pickupRouteData.orderNumber,  // NEW - from QR
+        dockCode: pickupRouteData.dockCode,         // NEW - from QR
+      });
 
-      if (!response.success || !response.data) {
-        setError(response.error || 'Failed to fetch orders for this route');
+      if (!sessionResponse.success || !sessionResponse.data) {
+        setError(sessionResponse.error || 'Failed to start session');
         setLoading(false);
         return;
       }
 
-      // Convert API response to PlannedSkid format
-      const apiOrders = response.data.orders;
-      const plannedSkidsFromApi: PlannedSkid[] = apiOrders.map((order: ApiPlannedOrder) => ({
-        orderId: order.orderId,
-        orderNumber: order.orderNumber,
-        dockCode: order.dockCode,
-        plantCode: order.plantCode,
-        supplierCode: order.supplierCode,
-        palletizationCode: order.plannedItems[0]?.palletizationCode || 'LB', // Use first item's palletization
-        mros: order.mros,
-        partCount: order.plannedItems.reduce((sum, item) => sum + item.totalBoxPlanned, 0),
-        destination: `Dock ${order.dockCode}`,
+      const sessionData: StartSessionResponse = sessionResponse.data;
+
+      // Store session ID and actual skid count
+      setSessionId(sessionData.sessionId);
+      setActualSkidCount(sessionData.scannedOrderSkidCount || 0);
+
+      // Call getOrderSkids to get actual skids from tblSkidScans
+      const skidsResponse = await getOrderSkids(
+        pickupRouteData.orderNumber,
+        pickupRouteData.dockCode
+      );
+
+      if (!skidsResponse.success || !skidsResponse.data) {
+        setError(skidsResponse.error || 'Failed to fetch skid details');
+        setLoading(false);
+        return;
+      }
+
+      const skidsData: OrderSkidsResponse = skidsResponse.data;
+
+      // Convert to PlannedSkid format
+      const plannedSkidsFromApi: PlannedSkid[] = skidsData.skids.map((skid: SkidDto) => ({
+        skidId: skid.skidId,
+        skidNumber: skid.skidNumber,
+        skidSide: skid.skidSide,
+        palletizationCode: skid.palletizationCode,
+        scannedAt: skid.scannedAt,
+        orderNumber: skidsData.orderNumber,
+        dockCode: skidsData.dockCode,
         isScanned: false,
       }));
 
-      console.log('Fetched planned orders from API:', plannedSkidsFromApi);
+      console.log('Session started successfully!');
+      console.log('Session ID:', sessionData.sessionId);
+      console.log('Skids loaded from tblSkidScans:', plannedSkidsFromApi.length);
+      console.log('Planned skids:', plannedSkidsFromApi);
+
       setPlannedSkids(plannedSkidsFromApi);
       setCurrentScreen(2);
       setError(null);
     } catch (err) {
-      console.error('Error fetching route orders:', err);
-      setError('Failed to load route orders. Please try again.');
+      console.error('Error starting session:', err);
+      setError('Failed to start session. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -330,16 +467,63 @@ export default function ShipmentLoadV2Page() {
 
   /**
    * Screen 2: Validate and Continue to Skid Scanning
+   * Updated: 2025-12-17 - Integrated updateShipmentLoadSession API
+   * Updated: 2025-12-17 - Changed to use separate first/last name fields
    */
-  const handleTrailerContinue = () => {
+  const handleTrailerContinue = async () => {
     // Validate required fields
-    if (!trailerData.trailerNumber.trim() || !trailerData.sealNumber.trim()) {
-      setError('Trailer Number and Seal Number are required');
+    if (!trailerData.trailerNumber.trim()) {
+      setError('Trailer Number is required');
+      return;
+    }
+    if (!trailerData.driverFirstName.trim()) {
+      setError('Driver First Name is required');
+      return;
+    }
+    if (!trailerData.driverLastName.trim()) {
+      setError('Driver Last Name is required');
       return;
     }
 
-    setCurrentScreen(3);
+    // Check user authentication
+    if (!user?.id) {
+      setError('User not authenticated. Please log in again.');
+      return;
+    }
+
+    // Check sessionId exists
+    if (!sessionId) {
+      setError('Session not found. Please scan the pickup route QR again.');
+      return;
+    }
+
+    setLoading(true);
     setError(null);
+
+    try {
+      const response = await updateShipmentLoadSession({
+        sessionId: sessionId,
+        trailerNumber: trailerData.trailerNumber.trim(),
+        sealNumber: trailerData.sealNumber.trim() || undefined,
+        driverFirstName: trailerData.driverFirstName.trim(),
+        driverLastName: trailerData.driverLastName.trim(),
+        supplierFirstName: trailerData.supplierFirstName.trim() || undefined,
+        supplierLastName: trailerData.supplierLastName.trim() || undefined,
+        // NOTE: NOT sending lpCode (SCAC Code) per business requirement
+      });
+
+      if (!response.success) {
+        setError(response.error || 'Failed to save trailer information');
+        setLoading(false);
+        return;
+      }
+
+      setCurrentScreen(3);
+    } catch (err) {
+      setError('Failed to save trailer information');
+    } finally {
+      setLoading(false);
+    }
   };
 
   /**
@@ -427,6 +611,9 @@ export default function ShipmentLoadV2Page() {
    * Parse scanned Toyota Manifest (44 chars) and validate via API
    * Author: Hassan, 2025-11-05
    * Updated: 2025-12-08 - Call API with individual fields instead of combined skidId
+   * Updated: 2025-12-17 - Fixed to use actual authenticated user instead of hardcoded ID
+   * Updated: 2025-12-17 - Match skids by skidId AND palletizationCode (SkidNumber + PalletizationCode grouping)
+   * Updated: 2025-12-17 - CRITICAL FIX: Added sessionId to API call and validation check
    */
   const handleSkidScan = async (result: ScanResult) => {
     console.log('Skid scan result:', result);
@@ -451,20 +638,47 @@ export default function ShipmentLoadV2Page() {
       return;
     }
 
+    // Validate user authentication
+    if (!user?.id) {
+      setError('User not authenticated. Please log in again.');
+      return;
+    }
+
+    // Validate sessionId exists
+    if (!sessionId) {
+      setError('Session not found. Please scan the pickup route QR again.');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
+      console.log('=== SKID SCAN API CALL DEBUG ===');
+      console.log('Session ID:', sessionId);
+      console.log('Route Number:', pickupRouteData.routeNumber);
+      console.log('Order Number:', manifest.orderNumber);
+      console.log('Dock Code:', manifest.dockCode);
+      console.log('Palletization Code:', manifest.palletizationCode);
+      console.log('MROS:', manifest.mros);
+      console.log('Skid ID:', manifest.skidId);
+      console.log('Scanned By:', user.id);
+
       // Call API to validate and scan skid with INDIVIDUAL fields
       const response = await scanShipmentLoadSkid({
+        sessionId: sessionId,                           // CRITICAL - Session ID required by backend
         routeNumber: pickupRouteData.routeNumber,
         orderNumber: manifest.orderNumber,
         dockCode: manifest.dockCode,
         palletizationCode: manifest.palletizationCode,  // Individual field
         mros: manifest.mros,                            // Individual field
-        skidId: manifest.skidId,                        // Individual field
-        scannedBy: 'user-001', // TODO: Get from auth context
+        skidId: manifest.skidId,                        // Individual field (4 chars: "001A")
+        scannedBy: user.id,
       });
+
+      console.log('API Response:', response);
+      console.log('======================');
 
       if (!response.success || !response.data) {
         setError(response.error || 'Failed to validate skid');
@@ -472,25 +686,41 @@ export default function ShipmentLoadV2Page() {
         return;
       }
 
-      // Find the planned skid that was scanned
+      // CRITICAL: Extract SkidNumber from scanned skidId (e.g., "001A" → "001")
+      // Match by SkidNumber + PalletizationCode (same as Toyota API grouping)
+      const scannedSkidNumber = manifest.skidId.substring(0, 3); // "001A" → "001"
+
+      console.log('=== SKID MATCHING (SkidNumber + PalletizationCode) ===');
+      console.log('Scanned skidId:', manifest.skidId);
+      console.log('Extracted skidNumber:', scannedSkidNumber);
+      console.log('Scanned palletizationCode:', manifest.palletizationCode);
+
+      // Find matching planned skid by SkidNumber AND PalletizationCode
       const plannedSkidIndex = plannedSkids.findIndex(
-        skid => skid.orderNumber === manifest.orderNumber && skid.dockCode === manifest.dockCode
+        skid => skid.skidNumber === scannedSkidNumber &&
+                skid.palletizationCode === manifest.palletizationCode
       );
 
       if (plannedSkidIndex === -1) {
-        setError(`Order ${manifest.orderNumber} not found in planned list.`);
+        setError(`Skid ${scannedSkidNumber} with palletization ${manifest.palletizationCode} not found in planned list.`);
         setLoading(false);
         return;
       }
 
       const plannedSkid = plannedSkids[plannedSkidIndex];
 
-      // Check if already scanned
+      // Check if already scanned by BOTH skidNumber AND palletizationCode
+      const scannedSkidNumber_from_scanned = manifest.skidId.substring(0, 3);
       const alreadyScanned = scannedSkids.some(
-        item => item.orderNumber === manifest.orderNumber && item.dockCode === manifest.dockCode
+        item => {
+          const itemSkidNumber = item.skidId.substring(0, 3);
+          return itemSkidNumber === scannedSkidNumber_from_scanned &&
+                 item.palletizationCode === manifest.palletizationCode;
+        }
       );
+
       if (alreadyScanned) {
-        setError(`Order ${manifest.orderNumber} has already been scanned.`);
+        setError(`Skid ${scannedSkidNumber} with palletization ${manifest.palletizationCode} has already been scanned.`);
         setLoading(false);
         return;
       }
@@ -498,14 +728,12 @@ export default function ShipmentLoadV2Page() {
       // Create scanned item with individual fields
       const newScannedSkid: ScannedSkid = {
         id: `${Date.now()}-${Math.random()}`,
-        orderId: plannedSkid.orderId,
-        orderNumber: manifest.orderNumber,
-        dockCode: manifest.dockCode,
+        skidId: manifest.skidId,
+        manifestNo: 0, // Not available from new API
         palletizationCode: manifest.palletizationCode,
         mros: manifest.mros,
-        skidId: manifest.skidId,
-        partCount: plannedSkid.partCount,
-        destination: plannedSkid.destination,
+        orderNumber: manifest.orderNumber,
+        dockCode: manifest.dockCode,
         timestamp: new Date().toISOString(),
       };
 
@@ -516,6 +744,8 @@ export default function ShipmentLoadV2Page() {
       setScannedSkids([...scannedSkids, newScannedSkid]);
       setError(null);
       console.log('Skid scanned successfully:', newScannedSkid);
+      console.log('Matched planned skid:', plannedSkid);
+      console.log('======================');
     } catch (err) {
       console.error('Error scanning skid:', err);
       setError('Failed to scan skid. Please try again.');
@@ -527,6 +757,7 @@ export default function ShipmentLoadV2Page() {
   /**
    * Screen 3: Add Exception Handler
    * Author: Hassan, 2025-11-05
+   * Updated: 2025-12-17 - Use composite key (SkidNumber-PalletizationCode) for relatedSkidId
    */
   const handleAddException = () => {
     if (!selectedExceptionType || !exceptionComments.trim()) {
@@ -542,7 +773,7 @@ export default function ShipmentLoadV2Page() {
     const newException: Exception = {
       type: selectedExceptionType,
       comments: exceptionComments.trim(),
-      relatedSkidId: selectedSkidForException,
+      relatedSkidId: selectedSkidForException, // Now contains "SkidNumber-PalletizationCode" (e.g., "001-A4")
       timestamp: new Date().toISOString(),
     };
 
@@ -606,6 +837,8 @@ export default function ShipmentLoadV2Page() {
    * Screen 3: Final Submit with Validation
    * Updated: 2025-11-05 - Added exception validation logic
    * Updated: 2025-12-08 - Call complete shipment API
+   * Updated: 2025-12-17 - Fixed to use actual authenticated user instead of hardcoded ID
+   * Updated: 2025-12-17 - Match exceptions using composite key (SkidNumber-PalletizationCode)
    */
   const handleFinalSubmit = async () => {
     console.log('=== SUBMIT VALIDATION ===');
@@ -621,10 +854,11 @@ export default function ShipmentLoadV2Page() {
     const unloadedSkids = plannedSkids.filter(skid => !skid.isScanned);
     console.log('Unloaded skids:', unloadedSkids);
 
-    // Check if unloaded items have exceptions
-    const hasExceptionForAllUnloaded = unloadedSkids.every(skid =>
-      exceptions.some(e => e.relatedSkidId === `${skid.palletizationCode}-${skid.mros}-${skid.orderNumber}`)
-    );
+    // Check if unloaded items have exceptions (using composite key: SkidNumber-PalletizationCode)
+    const hasExceptionForAllUnloaded = unloadedSkids.every(skid => {
+      const compositeKey = `${skid.skidNumber}-${skid.palletizationCode}`;
+      return exceptions.some(e => e.relatedSkidId === compositeKey);
+    });
     console.log('All unloaded have exceptions:', hasExceptionForAllUnloaded);
 
     // Enable submit only if all loaded OR (some loaded AND all unloaded have exceptions)
@@ -645,20 +879,26 @@ export default function ShipmentLoadV2Page() {
       return;
     }
 
+    // Validate user authentication
+    if (!user?.id) {
+      setError('User not authenticated. Please log in again.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
+    // Check sessionId exists
+    if (!sessionId) {
+      setError('Session not found. Please start over.');
+      return;
+    }
+
     try {
-      // Call complete shipment API
-      const response = await completeShipmentLoad({
-        routeNumber: pickupRouteData.routeNumber,
-        trailerNumber: trailerData.trailerNumber,
-        sealNumber: trailerData.sealNumber,
-        driverName: trailerData.driverName || undefined,
-        carrierName: trailerData.carrierName || undefined,
-        notes: trailerData.notes || undefined,
-        orderIds: scannedSkids.map(skid => skid.orderId),
-        completedBy: 'user-001', // TODO: Get from auth context
+      // Call complete shipment API with sessionId and userId
+      const response = await completeShipmentLoadSession({
+        sessionId: sessionId,
+        userId: user.id,
       });
 
       if (!response.success || !response.data) {
@@ -670,6 +910,9 @@ export default function ShipmentLoadV2Page() {
       // Set confirmation number from API response
       setConfirmationNumber(response.data.confirmationNumber);
       console.log('Shipment completed successfully:', response.data);
+
+      // Clear localStorage draft on successful submission
+      localStorage.removeItem('shipment-load-v2-draft');
 
       // Move to success screen
       setCurrentScreen(4);
@@ -686,6 +929,7 @@ export default function ShipmentLoadV2Page() {
    * Reset everything
    * Updated: 2025-11-05 - Clear localStorage draft on reset
    * Updated: 2025-11-05 - Added rackExceptionEnabled reset
+   * Updated: 2025-12-17 - Updated trailerData to use new field structure
    */
   const handleReset = () => {
     console.log('Resetting all state and clearing draft');
@@ -694,10 +938,11 @@ export default function ShipmentLoadV2Page() {
     setPickupRouteData(null);
     setTrailerData({
       trailerNumber: '',
+      driverFirstName: '',
+      driverLastName: '',
       sealNumber: '',
-      carrierName: '',
-      driverName: '',
-      notes: '',
+      supplierFirstName: '',
+      supplierLastName: '',
     });
     setPlannedSkids([]);
     setScannedSkids([]);
@@ -799,24 +1044,36 @@ export default function ShipmentLoadV2Page() {
 
                       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                         <div>
+                          <span className="text-gray-600">Order Number:</span>
+                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.orderNumber}</p>
+                        </div>
+                        <div>
                           <span className="text-gray-600">Route Number:</span>
                           <p className="font-mono font-bold text-gray-900">{pickupRouteData.routeNumber}</p>
                         </div>
                         <div>
-                          <span className="text-gray-600">Plant:</span>
-                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.plant}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Supplier Code:</span>
-                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.supplierCode}</p>
+                          <span className="text-gray-600">Scanned Skids:</span>
+                          <p className="font-mono font-bold text-gray-900">{actualSkidCount > 0 ? actualSkidCount : pickupRouteData.estimatedSkids}</p>
                         </div>
                         <div>
                           <span className="text-gray-600">Dock Code:</span>
                           <p className="font-mono font-bold text-gray-900">{pickupRouteData.dockCode}</p>
                         </div>
-                        <div className="col-span-2">
-                          <span className="text-gray-600">Estimated Skids:</span>
-                          <p className="font-bold text-lg text-gray-900">{pickupRouteData.estimatedSkids}</p>
+                        <div>
+                          <span className="text-gray-600">Pickup Date:</span>
+                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.pickupDate}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Pickup Time:</span>
+                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.pickupTime}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Plant Code:</span>
+                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.plant}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Supplier Code:</span>
+                          <p className="font-mono font-bold text-gray-900">{pickupRouteData.supplierCode}</p>
                         </div>
                       </div>
 
@@ -826,6 +1083,8 @@ export default function ShipmentLoadV2Page() {
                           onClick={handlePickupRouteContinue}
                           variant="success-light"
                           fullWidth
+                          loading={loading}
+                          disabled={loading}
                         >
                           <i className="fa fa-arrow-right mr-2"></i>
                           Continue to Trailer Information
@@ -864,62 +1123,77 @@ export default function ShipmentLoadV2Page() {
                   />
                 </div>
 
+                {/* Driver First Name */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
+                    Driver First Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={trailerData.driverFirstName}
+                    onChange={(e) => setTrailerData({ ...trailerData, driverFirstName: e.target.value })}
+                    placeholder="Enter driver first name"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    style={{ backgroundColor: '#FCFCFC' }}
+                  />
+                </div>
+
+                {/* Driver Last Name */}
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
+                    Driver Last Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={trailerData.driverLastName}
+                    onChange={(e) => setTrailerData({ ...trailerData, driverLastName: e.target.value })}
+                    placeholder="Enter driver last name"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    style={{ backgroundColor: '#FCFCFC' }}
+                  />
+                </div>
+
                 {/* Seal Number */}
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
-                    Seal Number *
+                    Seal Number
                   </label>
                   <input
                     type="text"
                     value={trailerData.sealNumber}
                     onChange={(e) => setTrailerData({ ...trailerData, sealNumber: e.target.value })}
-                    placeholder="Enter seal number"
+                    placeholder="Enter seal number (optional)"
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     style={{ backgroundColor: '#FCFCFC' }}
                   />
                 </div>
 
-                {/* Carrier Name */}
+                {/* Shipping TM First Name */}
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
-                    Carrier Name
+                    Shipping TM First Name
                   </label>
                   <input
                     type="text"
-                    value={trailerData.carrierName}
-                    onChange={(e) => setTrailerData({ ...trailerData, carrierName: e.target.value })}
-                    placeholder="Enter carrier name (optional)"
+                    value={trailerData.supplierFirstName}
+                    onChange={(e) => setTrailerData({ ...trailerData, supplierFirstName: e.target.value })}
+                    placeholder="Enter shipping TM first name (optional)"
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     style={{ backgroundColor: '#FCFCFC' }}
                   />
                 </div>
 
-                {/* Driver Name */}
+                {/* Shipping TM Last Name */}
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
-                    Driver Name
+                    Shipping TM Last Name
                   </label>
                   <input
                     type="text"
-                    value={trailerData.driverName}
-                    onChange={(e) => setTrailerData({ ...trailerData, driverName: e.target.value })}
-                    placeholder="Enter driver name (optional)"
+                    value={trailerData.supplierLastName}
+                    onChange={(e) => setTrailerData({ ...trailerData, supplierLastName: e.target.value })}
+                    placeholder="Enter shipping TM last name (optional)"
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ backgroundColor: '#FCFCFC' }}
-                  />
-                </div>
-
-                {/* Notes */}
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: '#253262' }}>
-                    Notes
-                  </label>
-                  <textarea
-                    value={trailerData.notes}
-                    onChange={(e) => setTrailerData({ ...trailerData, notes: e.target.value })}
-                    placeholder="Additional notes (optional)"
-                    rows={3}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
                     style={{ backgroundColor: '#FCFCFC' }}
                   />
                 </div>
@@ -938,7 +1212,7 @@ export default function ShipmentLoadV2Page() {
                     onClick={handleTrailerContinue}
                     variant="success"
                     fullWidth
-                    disabled={!trailerData.trailerNumber.trim() || !trailerData.sealNumber.trim()}
+                    disabled={!trailerData.trailerNumber.trim() || !trailerData.driverFirstName.trim() || !trailerData.driverLastName.trim()}
                   >
                     <i className="fa fa-arrow-right mr-2"></i>
                     Continue to Skid Scanning
@@ -1022,18 +1296,21 @@ export default function ShipmentLoadV2Page() {
                         .filter(skid => !skid.isScanned)
                         .map((skid, idx) => (
                           <div
-                            key={idx}
+                            key={`${skid.skidNumber}-${skid.palletizationCode}`}
                             className="p-3 border border-gray-200 rounded-lg"
                             style={{ backgroundColor: '#FFFFFF' }}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
-                                <p className="font-mono text-sm font-bold" style={{ color: '#253262' }}>
-                                  Order: {skid.orderNumber}
+                                <p className="text-sm" style={{ color: '#253262' }}>
+                                  Skid: <span className="font-bold">{skid.skidId}</span>
                                 </p>
-                                <p className="text-xs text-gray-600">Dock: {skid.dockCode}</p>
-                                <p className="text-xs text-gray-600">Palletization: {skid.palletizationCode}</p>
-                                <p className="text-xs text-gray-600">MROS: {skid.mros}</p>
+                                <p className="text-sm" style={{ color: '#253262' }}>
+                                  Dock: <span className="font-bold">{skid.palletizationCode || 'N/A'}</span>
+                                </p>
+                                <p className="text-sm" style={{ color: '#253262' }}>
+                                  Order: <span className="font-bold">{skid.orderNumber}</span>
+                                </p>
                               </div>
                               <Badge variant="warning">Pending</Badge>
                             </div>
@@ -1074,12 +1351,14 @@ export default function ShipmentLoadV2Page() {
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
-                              <p className="font-mono text-sm font-bold" style={{ color: '#253262' }}>
-                                Order: {skid.orderNumber}
+                              <p className="text-sm" style={{ color: '#253262' }}>
+                                Skid: <span className="font-bold">{skid.skidId}</span>
                               </p>
-                              <p className="text-xs text-gray-600">Dock: {skid.dockCode}</p>
-                              <p className="text-xs text-gray-600">
-                                Skid: {skid.palletizationCode}-{skid.mros}-{skid.skidId}
+                              <p className="text-sm" style={{ color: '#253262' }}>
+                                Dock: <span className="font-bold">{skid.palletizationCode || 'N/A'}</span>
+                              </p>
+                              <p className="text-sm" style={{ color: '#253262' }}>
+                                Order: <span className="font-bold">{skid.orderNumber}</span>
                               </p>
                               <p className="text-xs text-gray-500 mt-1">
                                 <i className="fa fa-clock mr-1"></i>
@@ -1192,9 +1471,11 @@ export default function ShipmentLoadV2Page() {
                   disabled={
                     !(plannedSkids.every(skid => skid.isScanned) ||
                       (scannedSkids.length > 0 &&
-                        plannedSkids.filter(skid => !skid.isScanned).every(skid =>
-                          exceptions.some(e => e.relatedSkidId === skid.skidId)
-                        )))
+                        plannedSkids.filter(skid => !skid.isScanned).every(skid => {
+                          const compositeKey = `${skid.skidNumber}-${skid.palletizationCode}`;
+                          return exceptions.some(e => e.relatedSkidId === compositeKey);
+                        })
+                      ))
                   }
                 >
                   <i className="fa fa-paper-plane mr-2"></i>
@@ -1441,8 +1722,8 @@ export default function ShipmentLoadV2Page() {
                   {plannedSkids
                     .filter(skid => !skid.isScanned)
                     .map((skid) => (
-                      <option key={skid.orderId} value={`${skid.palletizationCode}-${skid.mros}-${skid.orderNumber}`}>
-                        {skid.orderNumber} - Dock {skid.dockCode} - {skid.palletizationCode}
+                      <option key={`${skid.skidNumber}-${skid.palletizationCode}`} value={`${skid.skidNumber}-${skid.palletizationCode}`}>
+                        Skid {skid.skidId} (Dock: {skid.palletizationCode || 'N/A'}) - Order {skid.orderNumber}
                       </option>
                     ))}
                 </select>

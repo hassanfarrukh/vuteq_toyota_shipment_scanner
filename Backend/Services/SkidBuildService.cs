@@ -7,6 +7,7 @@
 using Backend.Models;
 using Backend.Models.DTOs;
 using Backend.Models.Entities;
+using Backend.Models.Enums;
 using Backend.Repositories;
 
 namespace Backend.Services;
@@ -358,6 +359,20 @@ public class SkidBuildService : ISkidBuildService
 
             var createdScan = await _skidBuildRepository.CreateScanAsync(scan);
 
+            // Update order status to SkidBuilding if this is the first scan
+            if (session.OrderId.HasValue)
+            {
+                var order = await _skidBuildRepository.GetOrderByIdAsync(session.OrderId.Value);
+                if (order != null && order.Status == OrderStatus.Planned)
+                {
+                    order.Status = OrderStatus.SkidBuilding;
+                    order.UpdatedAt = DateTime.UtcNow;
+                    await _skidBuildRepository.UpdateOrderAsync(order);
+
+                    _logger.LogInformation("Order {OrderId} status updated to SkidBuilding after first scan", order.OrderId);
+                }
+            }
+
             // Map to DTO to prevent circular reference
             var responseDto = new SkidBuildScanResponseDto
             {
@@ -616,6 +631,9 @@ public class SkidBuildService : ISkidBuildService
                 environment, order.RealOrderNumber, toyotaSkids.Count);
 
             var toyotaResponse = await _toyotaApiService.SubmitSkidBuildAsync(environment, toyotaRequest);
+
+            // Update order status to SkidBuilt (regardless of Toyota API result)
+            order.Status = OrderStatus.SkidBuilt;
 
             // ===== UPDATE ORDER WITH TOYOTA RESPONSE =====
             if (toyotaResponse.Success && !string.IsNullOrEmpty(toyotaResponse.ConfirmationNumber))

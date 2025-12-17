@@ -235,7 +235,7 @@ public class ToyotaApiService : IToyotaApiService
 
             var endpoint = $"{config.ApiBaseUrl.TrimEnd('/')}/skid";
             _logger.LogInformation("Posting to Toyota Skid Build API: {Endpoint}", endpoint);
-            _logger.LogDebug("Request Body: {RequestBody}", jsonBody);
+            _logger.LogInformation("Toyota Skid Build Payload: {Payload}", jsonBody);
 
             // Send request
             var response = await client.PostAsync(endpoint, content);
@@ -336,7 +336,7 @@ public class ToyotaApiService : IToyotaApiService
 
             var endpoint = $"{config.ApiBaseUrl.TrimEnd('/')}/trailer";
             _logger.LogInformation("Posting to Toyota Shipment Load API: {Endpoint}", endpoint);
-            _logger.LogDebug("Request Body: {RequestBody}", jsonBody);
+            _logger.LogInformation("Toyota Shipment Load Payload: {Payload}", jsonBody);
 
             // Send request
             var response = await client.PostAsync(endpoint, content);

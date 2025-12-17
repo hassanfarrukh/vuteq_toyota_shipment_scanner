@@ -25,6 +25,7 @@ public interface IOrderRepository
     Task<IEnumerable<PlannedItem>> GetAllPlannedItemsWithOrdersAsync();
     Task<IEnumerable<PlannedItem>> GetPlannedItemsByUploadIdAsync(Guid uploadId);
     Task<IEnumerable<PlannedItem>> GetPlannedItemsByOrderIdAsync(Guid orderId);
+    Task<Order?> GetOrderWithSkidScansAsync(string orderNumber, string dockCode);
 }
 
 /// <summary>
@@ -269,6 +270,27 @@ public class OrderRepository : IOrderRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving planned items by order ID: {OrderId}", orderId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get order with all skid scans for skid listing
+    /// </summary>
+    public async Task<Order?> GetOrderWithSkidScansAsync(string orderNumber, string dockCode)
+    {
+        try
+        {
+            return await _context.Orders
+                .Include(o => o.PlannedItems)
+                    .ThenInclude(pi => pi.SkidScans)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(o => o.RealOrderNumber == orderNumber && o.DockCode == dockCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving order with skid scans: {OrderNumber}-{DockCode}",
+                orderNumber, dockCode);
             throw;
         }
     }

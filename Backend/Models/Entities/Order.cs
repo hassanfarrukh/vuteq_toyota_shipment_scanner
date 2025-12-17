@@ -157,6 +157,12 @@ public class Order : AuditableEntity
 
     // Shipment Load Fields - Added 2025-12-08
     /// <summary>
+    /// Foreign key to ShipmentLoadSession - links order to active shipment
+    /// Added: 2025-12-17 for Toyota SCS Shipment Load integration
+    /// </summary>
+    public Guid? ShipmentLoadSessionId { get; set; }
+
+    /// <summary>
     /// Seal number for shipment security
     /// </summary>
     [MaxLength(50)]

@@ -2000,7 +2000,7 @@ export default function SkidBuildV2Page() {
                 Reset
               </Button>
               <Button
-                onClick={() => router.push('/home')}
+                onClick={() => router.push('/')}
                 variant="error"
                 fullWidth
               >

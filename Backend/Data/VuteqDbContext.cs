@@ -45,9 +45,9 @@ public class VuteqDbContext : DbContext
     public DbSet<PickupRoute> PickupRoutes { get; set; }
     public DbSet<ShipmentLoadSession> ShipmentLoadSessions { get; set; }
     public DbSet<PlannedSkid> PlannedSkids { get; set; }
-    public DbSet<ScannedSkid> ScannedSkids { get; set; }
     public DbSet<ShipmentLoadException> ShipmentLoadExceptions { get; set; }
-    public DbSet<ShipmentLoadDraft> ShipmentLoadDrafts { get; set; }
+    // Removed: ScannedSkid (unused - Shipment Load verifies SkidScans from Skid Build)
+    // Removed: ShipmentLoadDraft (unused - session provides persistence)
     #endregion
 
     #region DbSets - Pre-Shipment Scan Workflow
@@ -112,10 +112,17 @@ public class VuteqDbContext : DbContext
             entity.HasIndex(e => new { e.RealOrderNumber, e.DockCode }).IsUnique();
             entity.HasIndex(e => e.SupplierCode);
             entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.ShipmentLoadSessionId);
 
             // Configure enum conversion for OrderStatus
             entity.Property(e => e.Status)
                 .HasConversion<int>();
+
+            // Relationship to ShipmentLoadSession
+            entity.HasOne<ShipmentLoadSession>()
+                .WithMany()
+                .HasForeignKey(o => o.ShipmentLoadSessionId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
         #endregion
 

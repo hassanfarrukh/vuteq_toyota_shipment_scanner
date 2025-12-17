@@ -14,12 +14,29 @@ namespace Backend.Repositories;
 /// </summary>
 public interface IShipmentLoadRepository
 {
+    // Session operations
+    Task<ShipmentLoadSession?> GetActiveSessionByRouteAsync(string routeNumber);
+    Task<ShipmentLoadSession?> GetSessionByIdAsync(Guid sessionId);
+    Task<ShipmentLoadSession> CreateSessionAsync(ShipmentLoadSession session);
+    Task<ShipmentLoadSession> UpdateSessionAsync(ShipmentLoadSession session);
+    Task<ShipmentLoadSession?> GetSessionWithOrdersAsync(Guid sessionId);
+    Task<List<ShipmentLoadException>> GetSessionExceptionsAsync(Guid sessionId);
+
     // Order operations
     Task<List<Order>> GetOrdersByRouteAsync(string routeNumber);
     Task<Order?> GetOrderByNumberAndDockAsync(string orderNumber, string dockCode);
     Task<int> GetSkidScansCountForOrderAsync(Guid orderId);
     Task UpdateOrdersAsync(List<Order> orders);
     Task<List<Order>> GetOrdersByRouteAndStatusAsync(string routeNumber, OrderStatus status);
+    Task<List<Order>> GetOrdersBySessionIdAsync(Guid sessionId);
+    Task LinkOrderToSessionAsync(Guid orderId, Guid sessionId);
+
+    // Skid operations
+    Task<List<SkidScan>> GetSkidScansByOrderIdAsync(Guid orderId);
+
+    // Exception operations
+    Task<ShipmentLoadException> AddExceptionAsync(ShipmentLoadException exception);
+    Task DeleteExceptionAsync(Guid exceptionId);
 }
 
 /// <summary>
@@ -143,6 +160,254 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating orders");
+            throw;
+        }
+    }
+
+    // ===== SESSION OPERATIONS =====
+
+    /// <summary>
+    /// Get active session for a route (status = "active")
+    /// </summary>
+    public async Task<ShipmentLoadSession?> GetActiveSessionByRouteAsync(string routeNumber)
+    {
+        try
+        {
+            return await _context.ShipmentLoadSessions
+                .Include(s => s.ShipmentLoadExceptions)
+                .FirstOrDefaultAsync(s =>
+                    s.RouteNumber == routeNumber &&
+                    s.Status == "active");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving active session for route: {RouteNumber}", routeNumber);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get session by ID
+    /// </summary>
+    public async Task<ShipmentLoadSession?> GetSessionByIdAsync(Guid sessionId)
+    {
+        try
+        {
+            return await _context.ShipmentLoadSessions
+                .Include(s => s.ShipmentLoadExceptions)
+                .FirstOrDefaultAsync(s => s.SessionId == sessionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving session: {SessionId}", sessionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Create new shipment load session
+    /// </summary>
+    public async Task<ShipmentLoadSession> CreateSessionAsync(ShipmentLoadSession session)
+    {
+        try
+        {
+            _context.ShipmentLoadSessions.Add(session);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Created shipment load session: {SessionId} for route: {RouteNumber}",
+                session.SessionId, session.RouteNumber);
+            return session;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating session for route: {RouteNumber}", session.RouteNumber);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Update existing session
+    /// </summary>
+    public async Task<ShipmentLoadSession> UpdateSessionAsync(ShipmentLoadSession session)
+    {
+        try
+        {
+            _context.ShipmentLoadSessions.Update(session);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Updated shipment load session: {SessionId}", session.SessionId);
+            return session;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating session: {SessionId}", session.SessionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get session with all linked orders and their skid scans
+    /// </summary>
+    public async Task<ShipmentLoadSession?> GetSessionWithOrdersAsync(Guid sessionId)
+    {
+        try
+        {
+            var session = await _context.ShipmentLoadSessions
+                .Include(s => s.ShipmentLoadExceptions)
+                .FirstOrDefaultAsync(s => s.SessionId == sessionId);
+
+            if (session == null)
+                return null;
+
+            // Get orders linked to this session
+            var orders = await _context.Orders
+                .Include(o => o.PlannedItems)
+                    .ThenInclude(pi => pi.SkidScans)
+                .Where(o => o.ShipmentLoadSessionId == sessionId)
+                .ToListAsync();
+
+            // Attach orders to session for convenience (not a navigation property)
+            // The session object will be returned and the caller can query orders separately
+
+            return session;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving session with orders: {SessionId}", sessionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get all exceptions for a session
+    /// </summary>
+    public async Task<List<ShipmentLoadException>> GetSessionExceptionsAsync(Guid sessionId)
+    {
+        try
+        {
+            return await _context.ShipmentLoadExceptions
+                .Where(e => e.SessionId == sessionId)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving exceptions for session: {SessionId}", sessionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get all orders linked to a session
+    /// </summary>
+    public async Task<List<Order>> GetOrdersBySessionIdAsync(Guid sessionId)
+    {
+        try
+        {
+            return await _context.Orders
+                .Include(o => o.PlannedItems)
+                    .ThenInclude(pi => pi.SkidScans)
+                .Where(o => o.ShipmentLoadSessionId == sessionId)
+                .OrderBy(o => o.RealOrderNumber)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving orders for session: {SessionId}", sessionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Link order to session (set ShipmentLoadSessionId)
+    /// </summary>
+    public async Task LinkOrderToSessionAsync(Guid orderId, Guid sessionId)
+    {
+        try
+        {
+            var order = await _context.Orders.FindAsync(orderId);
+            if (order == null)
+                throw new InvalidOperationException($"Order not found: {orderId}");
+
+            order.ShipmentLoadSessionId = sessionId;
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Linked order {OrderId} to session {SessionId}", orderId, sessionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error linking order {OrderId} to session {SessionId}", orderId, sessionId);
+            throw;
+        }
+    }
+
+    // ===== SKID OPERATIONS =====
+
+    /// <summary>
+    /// Get all skid scans for an order
+    /// </summary>
+    public async Task<List<SkidScan>> GetSkidScansByOrderIdAsync(Guid orderId)
+    {
+        try
+        {
+            // Get all PlannedItemIds for this order
+            var plannedItemIds = await _context.PlannedItems
+                .Where(pi => pi.OrderId == orderId)
+                .Select(pi => pi.PlannedItemId)
+                .ToListAsync();
+
+            if (!plannedItemIds.Any())
+                return new List<SkidScan>();
+
+            // Get all skid scans for these planned items
+            return await _context.SkidScans
+                .Where(s => plannedItemIds.Contains(s.PlannedItemId))
+                .OrderBy(s => s.SkidNumber)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving skid scans for order: {OrderId}", orderId);
+            throw;
+        }
+    }
+
+    // ===== EXCEPTION OPERATIONS =====
+
+    /// <summary>
+    /// Add exception to session
+    /// </summary>
+    public async Task<ShipmentLoadException> AddExceptionAsync(ShipmentLoadException exception)
+    {
+        try
+        {
+            _context.ShipmentLoadExceptions.Add(exception);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Added exception {ExceptionType} to session {SessionId}",
+                exception.ExceptionType, exception.SessionId);
+            return exception;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding exception to session: {SessionId}", exception.SessionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Delete exception by ID
+    /// </summary>
+    public async Task DeleteExceptionAsync(Guid exceptionId)
+    {
+        try
+        {
+            var exception = await _context.ShipmentLoadExceptions.FindAsync(exceptionId);
+            if (exception != null)
+            {
+                _context.ShipmentLoadExceptions.Remove(exception);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Deleted exception: {ExceptionId}", exceptionId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting exception: {ExceptionId}", exceptionId);
             throw;
         }
     }

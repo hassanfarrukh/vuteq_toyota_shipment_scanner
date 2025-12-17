@@ -66,6 +66,13 @@ public class SkidScan : AuditableEntity
     [MaxLength(2)]
     public string? PalletizationCode { get; set; }
 
+    /// <summary>
+    /// Indicates if this skid was cut (unpicked) during Shipment Load
+    /// Used for skidCut field in Toyota API payload
+    /// Default: false
+    /// </summary>
+    public bool IsSkidCut { get; set; } = false;
+
     public DateTime ScannedAt { get; set; } = DateTime.UtcNow;
 
     public Guid? ScannedBy { get; set; }

@@ -976,6 +976,7 @@ export interface PlannedOrderItem {
 }
 
 export interface ShipmentLoadScanRequest {
+  sessionId: string;       // REQUIRED - Session ID from session/start
   routeNumber: string;
   orderNumber: string;
   dockCode: string;
@@ -1114,6 +1115,468 @@ export async function completeShipmentLoad(
       success: false,
       data: null,
       error: result.message || 'Failed to complete shipment',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// ===== SHIPMENT LOAD SESSION APIs (New Backend Integration) =====
+// Author: Hassan, Date: 2025-12-17
+// Session-based workflow matching Toyota API specification
+
+export interface StartSessionRequest {
+  routeNumber: string;
+  supplierCode: string;
+  pickupDateTime: string; // ISO 8601 format
+  userId: string;
+  orderNumber?: string;  // NEW - Order number from QR
+  dockCode?: string;     // NEW - Dock code from QR
+}
+
+export interface StartSessionResponse {
+  sessionId: string;
+  routeNumber: string;
+  route: string;  // Route without run (e.g., "YUAN")
+  run: string;    // Last 2 chars (e.g., "03")
+  status: string;
+  orders: PlannedOrder[];
+  isResumed: boolean;
+  scannedOrderSkidCount?: number;  // NEW - Actual skid count for the scanned order
+}
+
+export interface UpdateSessionRequest {
+  sessionId: string;
+  trailerNumber: string;      // Required
+  sealNumber?: string;         // Optional
+  lpCode?: string;             // Optional - Logistics Partner SCAC code
+  driverFirstName: string;     // REQUIRED (dropHook=false)
+  driverLastName: string;      // REQUIRED (dropHook=false)
+  supplierFirstName?: string;  // Optional
+  supplierLastName?: string;   // Optional
+}
+
+export interface SessionResponse {
+  sessionId: string;
+  routeNumber: string;
+  route: string;
+  run: string;
+  supplierCode: string;
+  pickupDateTime: string;
+  trailerNumber?: string;
+  sealNumber?: string;
+  lpCode?: string;
+  driverFirstName?: string;
+  driverLastName?: string;
+  supplierFirstName?: string;
+  supplierLastName?: string;
+  status: string;
+  orders: PlannedOrder[];
+  exceptions: ShipmentException[];
+  toyotaConfirmationNumber?: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface ScanManifestRequest {
+  sessionId: string;
+  orderNumber: string;
+  dockCode: string;
+  palletizationCode: string;
+  mros: string;
+  skidId: string;
+}
+
+export interface ScanManifestResponse {
+  orderId: string;
+  orderNumber: string;
+  status: string;
+  isValid: boolean;
+  message?: string;
+}
+
+export interface CompleteSessionRequest {
+  sessionId: string;
+  userId: string;
+}
+
+export interface CompleteSessionResponse {
+  confirmationNumber: string;  // Toyota API confirmation
+  sessionId: string;
+  routeNumber: string;
+  trailerNumber: string;
+  totalOrdersShipped: number;
+  completedAt: string;
+}
+
+export interface AddExceptionRequest {
+  sessionId: string;
+  exceptionCode: string;
+  comments: string;
+  relatedSkidId?: string;  // NULL for trailer-level, skidId for skid-level
+}
+
+export interface ShipmentException {
+  exceptionId: string;
+  sessionId: string;
+  exceptionCode: string;
+  comments: string;
+  relatedSkidId?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+// Start or resume shipment load session
+export async function startShipmentLoadSession(
+  request: StartSessionRequest
+): Promise<ApiResponse<StartSessionResponse>> {
+  try {
+    const response = await apiClient.post('/api/v1/shipment-load/session/start', request);
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to start session',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Update session with trailer information
+export async function updateShipmentLoadSession(
+  request: UpdateSessionRequest
+): Promise<ApiResponse<SessionResponse>> {
+  try {
+    const { sessionId, ...payload } = request;
+    const response = await apiClient.put(
+      `/api/v1/shipment-load/session/${sessionId}`,
+      payload
+    );
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to update session',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Get session details
+export async function getShipmentLoadSession(
+  sessionId: string
+): Promise<ApiResponse<SessionResponse>> {
+  try {
+    const response = await apiClient.get(
+      `/api/v1/shipment-load/session/${sessionId}`
+    );
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to get session',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Scan manifest and link order to session
+export async function scanShipmentLoadManifest(
+  request: ScanManifestRequest
+): Promise<ApiResponse<ScanManifestResponse>> {
+  try {
+    const response = await apiClient.post('/api/v1/shipment-load/scan', request);
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to scan manifest',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Complete shipment load session (submits to Toyota API)
+export async function completeShipmentLoadSession(
+  request: CompleteSessionRequest
+): Promise<ApiResponse<CompleteSessionResponse>> {
+  try {
+    const response = await apiClient.post('/api/v1/shipment-load/complete', request);
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to complete session',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Add exception to session
+export async function addShipmentLoadException(
+  request: AddExceptionRequest
+): Promise<ApiResponse<ShipmentException>> {
+  try {
+    const response = await apiClient.post('/api/v1/shipment-load/exception', request);
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to add exception',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Delete exception from session
+export async function deleteShipmentLoadException(
+  exceptionId: string
+): Promise<ApiResponse<boolean>> {
+  try {
+    const response = await apiClient.delete(
+      `/api/v1/shipment-load/exception/${exceptionId}`
+    );
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: true,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: false,
+      error: result.message || 'Failed to delete exception',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: false,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// ===== SHIPMENT LOAD VALIDATE ORDER API =====
+// Author: Hassan, Date: 2025-12-17
+// Validate order without starting session (get skid count)
+
+// Validate Order Response (for shipment load)
+export interface ValidateOrderResponse {
+  success: boolean;
+  orderId: string;
+  orderNumber: string;
+  dockCode: string;
+  plantCode: string;
+  supplierCode: string;
+  status: string;
+  skidBuildComplete: boolean;
+  skidCount: number;
+  toyotaConfirmationNumber?: string;
+}
+
+// Validate order for shipment load (get skid count without starting session)
+export async function validateShipmentLoadOrder(
+  orderNumber: string,
+  dockCode: string
+): Promise<ApiResponse<ValidateOrderResponse>> {
+  try {
+    const response = await apiClient.get(
+      `/api/v1/shipment-load/validate-order?orderNumber=${encodeURIComponent(orderNumber)}&dockCode=${encodeURIComponent(dockCode)}`
+    );
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to validate order',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// ===== ORDER SKIDS API =====
+// Author: Hassan, Date: 2025-12-17
+// Get built skids for an order from tblSkidScans
+
+export interface SkidDto {
+  skidId: string;           // Combined: "001A"
+  skidNumber: string;       // "001"
+  skidSide: string | null;  // "A" or "B"
+  palletizationCode: string | null;
+  scannedAt: string | null;
+}
+
+export interface OrderSkidsResponse {
+  orderNumber: string;
+  dockCode: string;
+  orderId: string;
+  skids: SkidDto[];
+  totalSkids: number;
+}
+
+export async function getOrderSkids(
+  orderNumber: string,
+  dockCode: string
+): Promise<ApiResponse<OrderSkidsResponse>> {
+  try {
+    const response = await apiClient.get(
+      `/api/v1/orders/${encodeURIComponent(orderNumber)}/skids?dockCode=${encodeURIComponent(dockCode)}`
+    );
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to fetch order skids',
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
