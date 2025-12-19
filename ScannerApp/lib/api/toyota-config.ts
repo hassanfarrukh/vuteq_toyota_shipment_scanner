@@ -17,6 +17,8 @@ export interface ToyotaConfigResponse {
   clientSecretMasked: string; // Always "********"
   tokenUrl: string;
   apiBaseUrl: string;
+  resourceUrl: string; // V2.1 - Resource URL for OAuth
+  xClientId: string; // V2.1 - X-Client-ID header
   isActive: boolean;
   createdBy?: string;
   createdAt: string;
@@ -32,6 +34,8 @@ export interface ToyotaConfigCreate {
   clientSecret: string;
   tokenUrl: string;
   apiBaseUrl: string;
+  resourceUrl: string; // V2.1 - Resource URL for OAuth (required)
+  xClientId: string; // V2.1 - X-Client-ID header (required)
   isActive: boolean;
 }
 
@@ -43,6 +47,8 @@ export interface ToyotaConfigUpdate {
   clientSecret?: string; // Only send if changing
   tokenUrl?: string;
   apiBaseUrl?: string;
+  resourceUrl?: string; // V2.1 - Resource URL for OAuth (optional for updates)
+  xClientId?: string; // V2.1 - X-Client-ID header (optional for updates)
   isActive?: boolean;
 }
 
@@ -292,14 +298,18 @@ export async function testToyotaConnection(configId: string): Promise<{
   }
 }
 
-// Default values for new configurations
+// Default values for new configurations (V2.1)
 export const TOYOTA_CONFIG_DEFAULTS = {
   QA: {
-    tokenUrl: 'https://login.microsoftonline.com/tmnatest.onmicrosoft.com/oauth2/token',
-    apiBaseUrl: 'https://api.dev.scs.toyota.com/spbapi/rest/',
+    tokenUrl: 'https://login.microsoftonline.com/9107b728-2166-4e5d-8d13-d1ffdf0351ef/oauth2/token',
+    apiBaseUrl: 'https://api.qa.toyota.com/tmna/qa/Logistics/v/SupplierOrderInformation/',
+    resourceUrl: 'https://tmnatest.onmicrosoft.com/supplier-order-information-oauth-lios-product',
+    xClientId: 'a1012aed-c89a-49d3-a796-63a4345ecc98',
   },
   PROD: {
-    tokenUrl: 'https://login.microsoftonline.com/toyota1.onmicrosoft.com/oauth2/token',
-    apiBaseUrl: 'https://api.scs.toyota.com/spbapi/rest/',
+    tokenUrl: 'https://login.microsoftonline.com/8c642d1d-d709-47b0-ab10-080af10798fb/oauth2/token',
+    apiBaseUrl: 'https://api.toyota.com/tmna/prod/Logistics/v/SupplierOrderInformation/',
+    resourceUrl: 'https://toyota1.onmicrosoft.com/supplier-order-information-oauth-lios-product',
+    xClientId: 'a1012aed-c89a-49d3-a796-63a4345ecc98',
   },
 };

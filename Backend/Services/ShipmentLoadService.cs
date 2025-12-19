@@ -132,8 +132,12 @@ public class ShipmentLoadService : IShipmentLoadService
                 _logger.LogInformation("Created new session: {SessionId}", existingSession.SessionId);
             }
 
-            // Get orders linked to this session
-            var orders = await _repository.GetOrdersBySessionIdAsync(existingSession.SessionId);
+            // Get ALL orders for this route that are ready to ship (Status >= SkidBuilt)
+            // This ensures we show ALL orders on the route, not just ones already scanned
+            var orders = await _repository.GetOrdersByRouteAsync(existingSession.RouteNumber);
+            _logger.LogInformation("GetOrdersByRouteAsync returned {Count} orders for route {Route}: {OrderNumbers}",
+                orders.Count, existingSession.RouteNumber,
+                string.Join(", ", orders.Select(o => $"{o.RealOrderNumber}-{o.DockCode}")));
 
             // Get exceptions for this session
             var exceptions = await _repository.GetSessionExceptionsAsync(existingSession.SessionId);
@@ -183,7 +187,8 @@ public class ShipmentLoadService : IShipmentLoadService
 
             session = await _repository.UpdateSessionAsync(session);
 
-            var orders = await _repository.GetOrdersBySessionIdAsync(sessionId);
+            // Get ALL orders for this route (not just linked ones) to show planned orders
+            var orders = await _repository.GetOrdersByRouteAsync(session.RouteNumber);
             var exceptions = await _repository.GetSessionExceptionsAsync(sessionId);
             var response = MapSessionToDto(session, orders, exceptions, false);
 
@@ -218,7 +223,8 @@ public class ShipmentLoadService : IShipmentLoadService
                     $"No session found with ID: {sessionId}");
             }
 
-            var orders = await _repository.GetOrdersBySessionIdAsync(sessionId);
+            // Get ALL orders for this route (not just linked ones) to show planned orders
+            var orders = await _repository.GetOrdersByRouteAsync(session.RouteNumber);
             var exceptions = await _repository.GetSessionExceptionsAsync(sessionId);
             var response = MapSessionToDto(session, orders, exceptions, false);
 
@@ -733,7 +739,7 @@ public class ShipmentLoadService : IShipmentLoadService
             TrailerNumber = session.TrailerNumber!,
             DropHook = false, // HARDCODED - VUTEQ business rule (driver always present)
             SealNumber = session.SealNumber,
-            LpCode = session.LpCode,
+            LpCode = string.IsNullOrEmpty(session.LpCode) ? "XXXX" : session.LpCode, // Default to XXXX if not provided
             DriverTeamFirstName = session.DriverFirstName,
             DriverTeamLastName = session.DriverLastName,
             SupplierTeamFirstName = session.SupplierFirstName,
@@ -768,11 +774,11 @@ public class ShipmentLoadService : IShipmentLoadService
                 PickUp = session.PickupDateTime?.ToString("yyyy-MM-ddTHH:mm") ?? DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm"),
                 Skids = skidScans.Select(scan => new ToyotaShipmentSkid
                 {
-                    SkidId = scan.SkidNumber, // Toyota spec: numeric only (3 digits)
+                    SkidId = scan.RawSkidId!, // Use RawSkidId which includes side (e.g., "001A")
                     Palletization = scan.PalletizationCode!,
                     SkidCut = scan.IsSkidCut,
                     Exceptions = exceptions
-                        .Where(e => e.RelatedSkidId == scan.SkidNumber) // Match by SkidNumber only (numeric)
+                        .Where(e => e.RelatedSkidId == scan.RawSkidId) // Match by RawSkidId (e.g., "001A")
                         .Select(e => new ToyotaException
                         {
                             ExceptionCode = e.ExceptionType!,

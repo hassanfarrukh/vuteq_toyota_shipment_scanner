@@ -18,6 +18,8 @@ public class ToyotaConfigResponseDto
     public string ClientSecretMasked { get; set; } = "********"; // Never expose real secret
     public string TokenUrl { get; set; } = null!;
     public string ApiBaseUrl { get; set; } = null!;
+    public string ResourceUrl { get; set; } = null!;
+    public string XClientId { get; set; } = null!;
     public bool IsActive { get; set; }
     public string? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -55,6 +57,15 @@ public class ToyotaConfigCreateDto
     [Url(ErrorMessage = "API Base URL must be a valid URL")]
     public string ApiBaseUrl { get; set; } = null!;
 
+    [Required(ErrorMessage = "Resource URL is required")]
+    [MaxLength(500, ErrorMessage = "Resource URL cannot exceed 500 characters")]
+    [Url(ErrorMessage = "Resource URL must be a valid URL")]
+    public string ResourceUrl { get; set; } = null!;
+
+    [Required(ErrorMessage = "X-Client-Id is required")]
+    [MaxLength(100, ErrorMessage = "X-Client-Id cannot exceed 100 characters")]
+    public string XClientId { get; set; } = null!;
+
     public bool IsActive { get; set; } = true;
 }
 
@@ -82,6 +93,13 @@ public class ToyotaConfigUpdateDto
     [MaxLength(500, ErrorMessage = "API Base URL cannot exceed 500 characters")]
     [Url(ErrorMessage = "API Base URL must be a valid URL")]
     public string? ApiBaseUrl { get; set; }
+
+    [MaxLength(500, ErrorMessage = "Resource URL cannot exceed 500 characters")]
+    [Url(ErrorMessage = "Resource URL must be a valid URL")]
+    public string? ResourceUrl { get; set; }
+
+    [MaxLength(100, ErrorMessage = "X-Client-Id cannot exceed 100 characters")]
+    public string? XClientId { get; set; }
 
     public bool? IsActive { get; set; }
 }

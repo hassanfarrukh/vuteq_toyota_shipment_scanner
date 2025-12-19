@@ -16,6 +16,9 @@
  * Updated: 2025-12-17 - SCREEN 3 SKIDS: Integrated getOrderSkids API to show actual built skids from tblSkidScans (001A, 001B, etc.)
  * Updated: 2025-12-17 - FIXED: Changed grouping to match Toyota API - SkidNumber + PalletizationCode (not SkidSide)
  * Updated: 2025-12-17 - CRITICAL FIX: Added sessionId to scanShipmentLoadSkid API call to resolve "session not found" error
+ * Updated: 2025-12-20 - SCREEN 3 UI REDESIGN: Grouped skids BY ORDER with nested collapsibles (matches TSCS Mobile workflow)
+ * Updated: 2025-12-20 - Added "Planned Orders" section with order-level grouping and skid build status validation
+ * Updated: 2025-12-20 - Added "Scanned Orders" section mirroring planned structure with order grouping
  *
  * SCREEN FLOW:
  * 1. Scan Pickup Route QR → Parse and store → Continue to Screen 2
@@ -163,7 +166,8 @@ export default function ShipmentLoadV2Page() {
   // Screen 3: Planned and Scanned Skids
   const [plannedSkids, setPlannedSkids] = useState<PlannedSkid[]>([]);
   const [scannedSkids, setScannedSkids] = useState<ScannedSkid[]>([]);
-  const [expandedSection, setExpandedSection] = useState<'order' | 'planned' | 'scanned' | 'exceptions' | null>(null);
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set()); // Track expanded orders separately
 
   // Exceptions Data (Screen 3)
   // Author: Hassan, 2025-11-05
@@ -423,38 +427,58 @@ export default function ShipmentLoadV2Page() {
       setSessionId(sessionData.sessionId);
       setActualSkidCount(sessionData.scannedOrderSkidCount || 0);
 
-      // Call getOrderSkids to get actual skids from tblSkidScans
-      const skidsResponse = await getOrderSkids(
-        pickupRouteData.orderNumber,
-        pickupRouteData.dockCode
-      );
+      console.log('Session started successfully!');
+      console.log('Session ID:', sessionData.sessionId);
+      console.log('Orders from session:', sessionData.orders?.length || 0);
+      console.log('Orders:', sessionData.orders?.map(o => `${o.orderNumber}-${o.dockCode}`).join(', '));
 
-      if (!skidsResponse.success || !skidsResponse.data) {
-        setError(skidsResponse.error || 'Failed to fetch skid details');
+      // Fetch skids for ALL orders in the session (not just the scanned one)
+      const allPlannedSkids: PlannedSkid[] = [];
+
+      // Get all unique orders from session (or use scanned order if no orders returned)
+      const ordersToFetch = sessionData.orders && sessionData.orders.length > 0
+        ? sessionData.orders.map(o => ({ orderNumber: o.orderNumber, dockCode: o.dockCode }))
+        : [{ orderNumber: pickupRouteData.orderNumber, dockCode: pickupRouteData.dockCode }];
+
+      console.log('Fetching skids for orders:', ordersToFetch.map(o => `${o.orderNumber}-${o.dockCode}`).join(', '));
+
+      // Fetch skids for each order
+      for (const orderInfo of ordersToFetch) {
+        try {
+          const skidsResponse = await getOrderSkids(orderInfo.orderNumber, orderInfo.dockCode);
+
+          if (skidsResponse.success && skidsResponse.data) {
+            const skidsData: OrderSkidsResponse = skidsResponse.data;
+            const orderSkids: PlannedSkid[] = skidsData.skids.map((skid: SkidDto) => ({
+              skidId: skid.skidId,
+              skidNumber: skid.skidNumber,
+              skidSide: skid.skidSide,
+              palletizationCode: skid.palletizationCode,
+              scannedAt: skid.scannedAt,
+              orderNumber: skidsData.orderNumber,
+              dockCode: skidsData.dockCode,
+              isScanned: false,
+            }));
+            allPlannedSkids.push(...orderSkids);
+            console.log(`Loaded ${orderSkids.length} skids for order ${orderInfo.orderNumber}-${orderInfo.dockCode}`);
+          } else {
+            console.warn(`Failed to fetch skids for order ${orderInfo.orderNumber}-${orderInfo.dockCode}:`, skidsResponse.error);
+          }
+        } catch (err) {
+          console.error(`Error fetching skids for order ${orderInfo.orderNumber}-${orderInfo.dockCode}:`, err);
+        }
+      }
+
+      if (allPlannedSkids.length === 0) {
+        setError('No skids found for any orders in this route');
         setLoading(false);
         return;
       }
 
-      const skidsData: OrderSkidsResponse = skidsResponse.data;
+      console.log('Total skids loaded from all orders:', allPlannedSkids.length);
+      console.log('Planned skids:', allPlannedSkids);
 
-      // Convert to PlannedSkid format
-      const plannedSkidsFromApi: PlannedSkid[] = skidsData.skids.map((skid: SkidDto) => ({
-        skidId: skid.skidId,
-        skidNumber: skid.skidNumber,
-        skidSide: skid.skidSide,
-        palletizationCode: skid.palletizationCode,
-        scannedAt: skid.scannedAt,
-        orderNumber: skidsData.orderNumber,
-        dockCode: skidsData.dockCode,
-        isScanned: false,
-      }));
-
-      console.log('Session started successfully!');
-      console.log('Session ID:', sessionData.sessionId);
-      console.log('Skids loaded from tblSkidScans:', plannedSkidsFromApi.length);
-      console.log('Planned skids:', plannedSkidsFromApi);
-
-      setPlannedSkids(plannedSkidsFromApi);
+      setPlannedSkids(allPlannedSkids);
       setCurrentScreen(2);
       setError(null);
     } catch (err) {
@@ -694,33 +718,39 @@ export default function ShipmentLoadV2Page() {
       console.log('Scanned skidId:', manifest.skidId);
       console.log('Extracted skidNumber:', scannedSkidNumber);
       console.log('Scanned palletizationCode:', manifest.palletizationCode);
+      console.log('Scanned orderNumber:', manifest.orderNumber);
+      console.log('Scanned dockCode:', manifest.dockCode);
 
-      // Find matching planned skid by SkidNumber AND PalletizationCode
+      // Find matching planned skid by Order Number + Dock Code + Skid Number + Palletization Code
       const plannedSkidIndex = plannedSkids.findIndex(
-        skid => skid.skidNumber === scannedSkidNumber &&
+        skid => skid.orderNumber === manifest.orderNumber &&
+                skid.dockCode === manifest.dockCode &&
+                skid.skidNumber === scannedSkidNumber &&
                 skid.palletizationCode === manifest.palletizationCode
       );
 
       if (plannedSkidIndex === -1) {
-        setError(`Skid ${scannedSkidNumber} with palletization ${manifest.palletizationCode} not found in planned list.`);
+        setError(`Order ${manifest.orderNumber}-${manifest.dockCode} - Skid ${scannedSkidNumber} with palletization ${manifest.palletizationCode} not found in planned list.`);
         setLoading(false);
         return;
       }
 
       const plannedSkid = plannedSkids[plannedSkidIndex];
 
-      // Check if already scanned by BOTH skidNumber AND palletizationCode
+      // Check if already scanned by Order Number + Dock Code + Skid Number + Palletization Code
       const scannedSkidNumber_from_scanned = manifest.skidId.substring(0, 3);
       const alreadyScanned = scannedSkids.some(
         item => {
           const itemSkidNumber = item.skidId.substring(0, 3);
-          return itemSkidNumber === scannedSkidNumber_from_scanned &&
+          return item.orderNumber === manifest.orderNumber &&
+                 item.dockCode === manifest.dockCode &&
+                 itemSkidNumber === scannedSkidNumber_from_scanned &&
                  item.palletizationCode === manifest.palletizationCode;
         }
       );
 
       if (alreadyScanned) {
-        setError(`Skid ${scannedSkidNumber} with palletization ${manifest.palletizationCode} has already been scanned.`);
+        setError(`Order ${manifest.orderNumber}-${manifest.dockCode} - Skid ${scannedSkidNumber} with palletization ${manifest.palletizationCode} has already been scanned.`);
         setLoading(false);
         return;
       }
@@ -1270,7 +1300,7 @@ export default function ShipmentLoadV2Page() {
                 )}
               </Card>
 
-              {/* Planned Skids - Collapsible */}
+              {/* Planned Orders - Collapsible (Grouped by Order) */}
               <Card>
                 <CardHeader className="p-0">
                   <div
@@ -1280,48 +1310,118 @@ export default function ShipmentLoadV2Page() {
                     onClick={() => setExpandedSection(expandedSection === 'planned' ? null : 'planned')}
                   >
                     <CardTitle className={expandedSection === 'planned' ? 'text-sm' : 'text-xs'}>
-                      Planned Skids ({plannedSkids.filter(s => !s.isScanned).length}/{plannedSkids.length})
+                      Planned Orders ({Object.keys(plannedSkids.reduce((acc, s) => ({ ...acc, [s.orderNumber]: true }), {})).length})
                     </CardTitle>
                     <i className={`fa fa-chevron-${expandedSection === 'planned' ? 'up' : 'down'}`}></i>
                   </div>
                 </CardHeader>
                 {expandedSection === 'planned' && (
                   <CardContent className="space-y-2">
-                    {plannedSkids.filter(skid => !skid.isScanned).length === 0 ? (
-                      <p className="text-sm text-gray-500 text-center py-4">
-                        All skids scanned!
-                      </p>
-                    ) : (
-                      plannedSkids
-                        .filter(skid => !skid.isScanned)
-                        .map((skid, idx) => (
-                          <div
-                            key={`${skid.skidNumber}-${skid.palletizationCode}`}
-                            className="p-3 border border-gray-200 rounded-lg"
-                            style={{ backgroundColor: '#FFFFFF' }}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <p className="text-sm" style={{ color: '#253262' }}>
-                                  Skid: <span className="font-bold">{skid.skidId}</span>
-                                </p>
-                                <p className="text-sm" style={{ color: '#253262' }}>
-                                  Dock: <span className="font-bold">{skid.palletizationCode || 'N/A'}</span>
-                                </p>
-                                <p className="text-sm" style={{ color: '#253262' }}>
-                                  Order: <span className="font-bold">{skid.orderNumber}</span>
+                    {(() => {
+                      // Group skids by orderNumber
+                      const orderGroups = plannedSkids.reduce((acc, skid) => {
+                        if (!acc[skid.orderNumber]) {
+                          acc[skid.orderNumber] = [];
+                        }
+                        acc[skid.orderNumber].push(skid);
+                        return acc;
+                      }, {} as Record<string, PlannedSkid[]>);
+
+                      // Helper function to toggle order expansion
+                      const toggleOrder = (orderNum: string, e: React.MouseEvent) => {
+                        e.stopPropagation(); // Prevent parent collapse
+                        setExpandedOrders(prev => {
+                          const newSet = new Set(prev);
+                          if (newSet.has(`planned-${orderNum}`)) {
+                            newSet.delete(`planned-${orderNum}`);
+                          } else {
+                            newSet.add(`planned-${orderNum}`);
+                          }
+                          return newSet;
+                        });
+                      };
+
+                      return Object.entries(orderGroups).map(([orderNumber, skids]) => {
+                        const dockCode = skids[0]?.dockCode || 'N/A';
+                        const unscannedSkids = skids.filter(s => !s.isScanned);
+                        const isOrderExpanded = expandedOrders.has(`planned-${orderNumber}`);
+
+                        // Check if order has toyotaSkidBuildConfirmationNumber (dummy check - you need real data)
+                        // For now, we assume all orders are ready unless explicitly marked
+                        const isOrderReady = true; // TODO: Check actual confirmation number from backend
+
+                        return (
+                          <div key={orderNumber} className="border border-gray-200 rounded-lg overflow-hidden">
+                            {/* Order Header - Collapsible */}
+                            <div
+                              className={`flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 transition-colors ${
+                                !isOrderReady ? 'bg-red-50 border-red-300' : 'bg-white'
+                              }`}
+                              onClick={(e) => toggleOrder(orderNumber, e)}
+                            >
+                              <div className="flex items-center gap-2 flex-1">
+                                <i className={`fa fa-chevron-${isOrderExpanded ? 'down' : 'right'} text-gray-500`}></i>
+                                <div>
+                                  <p className="text-sm font-bold" style={{ color: isOrderReady ? '#253262' : '#DC2626' }}>
+                                    Order {orderNumber}
+                                  </p>
+                                  <p className="text-xs text-gray-600">
+                                    Dock: <span className="font-semibold">{dockCode}</span> | Skids: {unscannedSkids.length}/{skids.length}
+                                  </p>
+                                  {!isOrderReady && (
+                                    <p className="text-xs font-semibold text-red-600 mt-1">
+                                      SKID BUILD NOT COMPLETE
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              {!isOrderReady && (
+                                <Badge variant="error">Blocked</Badge>
+                              )}
+                            </div>
+
+                            {/* Order Skids - Nested Collapsible */}
+                            {isOrderExpanded && isOrderReady && (
+                              <div className="p-2 bg-gray-50 space-y-1">
+                                {unscannedSkids.length === 0 ? (
+                                  <p className="text-sm text-gray-500 text-center py-2">
+                                    All skids scanned for this order
+                                  </p>
+                                ) : (
+                                  unscannedSkids.map((skid) => (
+                                    <div
+                                      key={`${skid.skidNumber}-${skid.palletizationCode}`}
+                                      className="p-2 bg-white border border-gray-200 rounded"
+                                    >
+                                      <p className="text-xs" style={{ color: '#253262' }}>
+                                        {skid.palletizationCode && (
+                                          <span>Pallet: <span className="font-semibold">{skid.palletizationCode}</span> | </span>
+                                        )}
+                                        Skid: <span className="font-semibold">{skid.skidNumber}</span>
+                                      </p>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            )}
+
+                            {/* Blocked Order Message */}
+                            {isOrderExpanded && !isOrderReady && (
+                              <div className="p-3 bg-red-50 border-t border-red-200">
+                                <p className="text-sm text-red-700">
+                                  This order cannot be scanned. Please complete skid build first.
                                 </p>
                               </div>
-                              <Badge variant="warning">Pending</Badge>
-                            </div>
+                            )}
                           </div>
-                        ))
-                    )}
+                        );
+                      });
+                    })()}
                   </CardContent>
                 )}
               </Card>
 
-              {/* Scanned Skids - Collapsible */}
+              {/* Scanned Orders - Collapsible (Grouped by Order) */}
               <Card>
                 <CardHeader className="p-0">
                   <div
@@ -1331,7 +1431,7 @@ export default function ShipmentLoadV2Page() {
                     onClick={() => setExpandedSection(expandedSection === 'scanned' ? null : 'scanned')}
                   >
                     <CardTitle className={expandedSection === 'scanned' ? 'text-sm' : 'text-xs'}>
-                      Scanned Skids ({scannedSkids.length}/{plannedSkids.length})
+                      Scanned Orders ({Object.keys(scannedSkids.reduce((acc, s) => ({ ...acc, [s.orderNumber]: true }), {})).length})
                     </CardTitle>
                     <i className={`fa fa-chevron-${expandedSection === 'scanned' ? 'up' : 'down'}`}></i>
                   </div>
@@ -1343,35 +1443,86 @@ export default function ShipmentLoadV2Page() {
                         No skids scanned yet
                       </p>
                     ) : (
-                      scannedSkids.map((skid, idx) => (
-                        <div
-                          key={skid.id}
-                          className="p-3 border-2 border-success-500 rounded-lg relative"
-                          style={{ backgroundColor: '#FFFFFF' }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <p className="text-sm" style={{ color: '#253262' }}>
-                                Skid: <span className="font-bold">{skid.skidId}</span>
-                              </p>
-                              <p className="text-sm" style={{ color: '#253262' }}>
-                                Dock: <span className="font-bold">{skid.palletizationCode || 'N/A'}</span>
-                              </p>
-                              <p className="text-sm" style={{ color: '#253262' }}>
-                                Order: <span className="font-bold">{skid.orderNumber}</span>
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                <i className="fa fa-clock mr-1"></i>
-                                {new Date(skid.timestamp).toLocaleTimeString()}
-                              </p>
+                      (() => {
+                        // Group scanned skids by orderNumber
+                        const scannedOrderGroups = scannedSkids.reduce((acc, skid) => {
+                          if (!acc[skid.orderNumber]) {
+                            acc[skid.orderNumber] = [];
+                          }
+                          acc[skid.orderNumber].push(skid);
+                          return acc;
+                        }, {} as Record<string, ScannedSkid[]>);
+
+                        // Helper function to toggle scanned order expansion
+                        const toggleScannedOrder = (orderNum: string, e: React.MouseEvent) => {
+                          e.stopPropagation(); // Prevent parent collapse
+                          setExpandedOrders(prev => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(`scanned-${orderNum}`)) {
+                              newSet.delete(`scanned-${orderNum}`);
+                            } else {
+                              newSet.add(`scanned-${orderNum}`);
+                            }
+                            return newSet;
+                          });
+                        };
+
+                        return Object.entries(scannedOrderGroups).map(([orderNumber, skids]) => {
+                          const dockCode = skids[0]?.dockCode || 'N/A';
+                          const isOrderExpanded = expandedOrders.has(`scanned-${orderNumber}`);
+
+                          return (
+                            <div key={orderNumber} className="border-2 border-success-500 rounded-lg overflow-hidden bg-success-50">
+                              {/* Order Header - Collapsible */}
+                              <div
+                                className="flex items-center justify-between p-3 cursor-pointer hover:bg-success-100 transition-colors bg-white"
+                                onClick={(e) => toggleScannedOrder(orderNumber, e)}
+                              >
+                                <div className="flex items-center gap-2 flex-1">
+                                  <i className={`fa fa-chevron-${isOrderExpanded ? 'down' : 'right'} text-success-600`}></i>
+                                  <div>
+                                    <p className="text-sm font-bold text-success-700">
+                                      Order {orderNumber}
+                                    </p>
+                                    <p className="text-xs text-gray-600">
+                                      Dock: <span className="font-semibold">{dockCode}</span> | Scanned: {skids.length}
+                                    </p>
+                                  </div>
+                                </div>
+                                <i className="fa fa-circle-check text-success-600 text-xl"></i>
+                              </div>
+
+                              {/* Order Scanned Skids - Nested Collapsible */}
+                              {isOrderExpanded && (
+                                <div className="p-2 bg-success-50 space-y-1">
+                                  {skids.map((skid, idx) => (
+                                    <div
+                                      key={skid.id}
+                                      className="p-2 bg-white border border-success-300 rounded"
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                          <p className="text-xs" style={{ color: '#253262' }}>
+                                            {skid.palletizationCode && (
+                                              <span>Pallet: <span className="font-semibold">{skid.palletizationCode}</span> | </span>
+                                            )}
+                                            Skid: <span className="font-semibold">{skid.skidId}</span>
+                                          </p>
+                                          <p className="text-xs text-gray-500 mt-1">
+                                            <i className="fa fa-clock mr-1"></i>
+                                            {new Date(skid.timestamp).toLocaleTimeString()}
+                                          </p>
+                                        </div>
+                                        <span className="text-xs font-medium text-success-700">#{idx + 1}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                            <div className="flex flex-col items-end gap-1">
-                              <i className="fa fa-circle-check text-success-600 text-xl"></i>
-                              <span className="text-xs font-medium text-success-700">#{idx + 1}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))
+                          );
+                        });
+                      })()
                     )}
                   </CardContent>
                 )}

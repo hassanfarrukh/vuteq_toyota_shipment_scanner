@@ -55,15 +55,26 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
 
     /// <summary>
     /// Get all orders for a route where Status >= SkidBuilt (ready to ship)
+    /// Normalizes route comparison by removing hyphens (e.g., JAAJ17 matches JAAJ-17)
     /// </summary>
     public async Task<List<Order>> GetOrdersByRouteAsync(string routeNumber)
     {
         try
         {
+            // Normalize input route by removing hyphens
+            var normalizedRoute = routeNumber.Replace("-", "");
+
+            // Also try with hyphen inserted before last 2 digits (e.g., JAAJ17 -> JAAJ-17)
+            var routeWithHyphen = normalizedRoute.Length > 2
+                ? normalizedRoute.Insert(normalizedRoute.Length - 2, "-")
+                : normalizedRoute;
+
             return await _context.Orders
                 .Include(o => o.PlannedItems)
                 .Where(o =>
-                    o.PlannedRoute == routeNumber &&
+                    (o.PlannedRoute == normalizedRoute ||
+                     o.PlannedRoute == routeWithHyphen ||
+                     o.PlannedRoute == routeNumber) &&
                     o.Status >= OrderStatus.SkidBuilt)
                 .OrderBy(o => o.RealOrderNumber)
                 .ToListAsync();
@@ -77,15 +88,26 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
 
     /// <summary>
     /// Get orders by route and specific status
+    /// Normalizes route comparison by removing hyphens (e.g., JAAJ17 matches JAAJ-17)
     /// </summary>
     public async Task<List<Order>> GetOrdersByRouteAndStatusAsync(string routeNumber, OrderStatus status)
     {
         try
         {
+            // Normalize input route by removing hyphens
+            var normalizedRoute = routeNumber.Replace("-", "");
+
+            // Also try with hyphen inserted before last 2 digits (e.g., JAAJ17 -> JAAJ-17)
+            var routeWithHyphen = normalizedRoute.Length > 2
+                ? normalizedRoute.Insert(normalizedRoute.Length - 2, "-")
+                : normalizedRoute;
+
             return await _context.Orders
                 .Include(o => o.PlannedItems)
                 .Where(o =>
-                    o.PlannedRoute == routeNumber &&
+                    (o.PlannedRoute == normalizedRoute ||
+                     o.PlannedRoute == routeWithHyphen ||
+                     o.PlannedRoute == routeNumber) &&
                     o.Status == status)
                 .OrderBy(o => o.RealOrderNumber)
                 .ToListAsync();

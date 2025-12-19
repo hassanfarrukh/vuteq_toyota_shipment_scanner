@@ -102,13 +102,14 @@ public class ToyotaApiService : IToyotaApiService
         {
             _logger.LogInformation("Requesting new OAuth2 token for Toyota API - Environment: {Environment}", environment);
 
-            // Toyota API spec (V2.0, page 6) OAuth parameters: client_id, client_secret, grant_type only
+            // Toyota API spec (V2.1) OAuth parameters: client_id, client_secret, grant_type, resource
             var client = _httpClientFactory.CreateClient();
             var content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 ["grant_type"] = "client_credentials",
                 ["client_id"] = config.ClientId,
-                ["client_secret"] = config.ClientSecret
+                ["client_secret"] = config.ClientSecret,
+                ["resource"] = config.ResourceUrl
             });
 
             var response = await client.PostAsync(config.TokenUrl, content);
@@ -223,6 +224,7 @@ public class ToyotaApiService : IToyotaApiService
             // Prepare HTTP request
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            client.DefaultRequestHeaders.Add("x-client-id", config.XClientId);
 
             var jsonOptions = new JsonSerializerOptions
             {
@@ -324,6 +326,7 @@ public class ToyotaApiService : IToyotaApiService
             // Prepare HTTP request
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            client.DefaultRequestHeaders.Add("x-client-id", config.XClientId);
 
             var jsonOptions = new JsonSerializerOptions
             {

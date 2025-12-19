@@ -158,6 +158,8 @@ public class ToyotaConfigService : IToyotaConfigService
                 ClientSecret = dto.ClientSecret, // In production, encrypt this
                 TokenUrl = dto.TokenUrl,
                 ApiBaseUrl = dto.ApiBaseUrl,
+                ResourceUrl = dto.ResourceUrl,
+                XClientId = dto.XClientId,
                 IsActive = dto.IsActive,
                 ApplicationName = dto.ApplicationName,
                 CreatedBy = userId
@@ -227,6 +229,12 @@ public class ToyotaConfigService : IToyotaConfigService
 
             if (!string.IsNullOrWhiteSpace(dto.ApiBaseUrl))
                 existing.ApiBaseUrl = dto.ApiBaseUrl;
+
+            if (!string.IsNullOrWhiteSpace(dto.ResourceUrl))
+                existing.ResourceUrl = dto.ResourceUrl;
+
+            if (!string.IsNullOrWhiteSpace(dto.XClientId))
+                existing.XClientId = dto.XClientId;
 
             if (dto.IsActive.HasValue)
                 existing.IsActive = dto.IsActive.Value;
@@ -314,13 +322,13 @@ public class ToyotaConfigService : IToyotaConfigService
             var httpClient = _httpClientFactory.CreateClient();
             httpClient.Timeout = TimeSpan.FromSeconds(30);
 
-            // Toyota API spec (V2.0, page 6) specifies only these OAuth parameters:
-            // client_id, client_secret, grant_type (NO resource or scope parameter)
+            // Toyota API spec (V2.1) OAuth parameters: grant_type, client_id, client_secret, resource
             var requestBody = new Dictionary<string, string>
             {
                 { "grant_type", "client_credentials" },
                 { "client_id", config.ClientId },
-                { "client_secret", config.ClientSecret }
+                { "client_secret", config.ClientSecret },
+                { "resource", config.ResourceUrl }
             };
 
             var request = new HttpRequestMessage(HttpMethod.Post, config.TokenUrl)
@@ -479,6 +487,8 @@ public class ToyotaConfigService : IToyotaConfigService
             ClientSecretMasked = "********", // Never expose the real secret
             TokenUrl = config.TokenUrl,
             ApiBaseUrl = config.ApiBaseUrl,
+            ResourceUrl = config.ResourceUrl,
+            XClientId = config.XClientId,
             IsActive = config.IsActive,
             ApplicationName = config.ApplicationName,
             CreatedBy = config.CreatedBy,

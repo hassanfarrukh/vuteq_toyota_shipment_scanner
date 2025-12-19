@@ -233,6 +233,8 @@ export default function AdministrationPage() {
     clientSecret: '',
     tokenUrl: TOYOTA_CONFIG_DEFAULTS.QA.tokenUrl,
     apiBaseUrl: TOYOTA_CONFIG_DEFAULTS.QA.apiBaseUrl,
+    resourceUrl: TOYOTA_CONFIG_DEFAULTS.QA.resourceUrl,
+    xClientId: TOYOTA_CONFIG_DEFAULTS.QA.xClientId,
     isActive: true
   });
   const [isTestingConnection, setIsTestingConnection] = useState(false);
@@ -863,6 +865,8 @@ export default function AdministrationPage() {
       clientSecret: '',
       tokenUrl: TOYOTA_CONFIG_DEFAULTS.QA.tokenUrl,
       apiBaseUrl: TOYOTA_CONFIG_DEFAULTS.QA.apiBaseUrl,
+      resourceUrl: TOYOTA_CONFIG_DEFAULTS.QA.resourceUrl,
+      xClientId: TOYOTA_CONFIG_DEFAULTS.QA.xClientId,
       isActive: true
     });
     setIsAddToyotaConfigOpen(true);
@@ -878,6 +882,8 @@ export default function AdministrationPage() {
         clientSecret: '', // Don't populate secret (it's masked)
         tokenUrl: config.tokenUrl,
         apiBaseUrl: config.apiBaseUrl,
+        resourceUrl: config.resourceUrl,
+        xClientId: config.xClientId,
         isActive: config.isActive
       });
       setEditingItem(config);
@@ -911,8 +917,8 @@ export default function AdministrationPage() {
     setSuccess(null);
 
     // Validate required fields
-    if (!toyotaConfigForm.environment || !toyotaConfigForm.clientId || !toyotaConfigForm.tokenUrl || !toyotaConfigForm.apiBaseUrl) {
-      setError('Please fill in all required fields (Environment, Client ID, Token URL, API Base URL)');
+    if (!toyotaConfigForm.environment || !toyotaConfigForm.clientId || !toyotaConfigForm.tokenUrl || !toyotaConfigForm.apiBaseUrl || !toyotaConfigForm.resourceUrl || !toyotaConfigForm.xClientId) {
+      setError('Please fill in all required fields (Environment, Client ID, Token URL, API Base URL, Resource URL, X-Client-ID)');
       return;
     }
 
@@ -932,6 +938,8 @@ export default function AdministrationPage() {
           clientId: toyotaConfigForm.clientId,
           tokenUrl: toyotaConfigForm.tokenUrl,
           apiBaseUrl: toyotaConfigForm.apiBaseUrl,
+          resourceUrl: toyotaConfigForm.resourceUrl,
+          xClientId: toyotaConfigForm.xClientId,
           isActive: toyotaConfigForm.isActive,
         };
 
@@ -950,6 +958,8 @@ export default function AdministrationPage() {
           clientSecret: toyotaConfigForm.clientSecret,
           tokenUrl: toyotaConfigForm.tokenUrl,
           apiBaseUrl: toyotaConfigForm.apiBaseUrl,
+          resourceUrl: toyotaConfigForm.resourceUrl,
+          xClientId: toyotaConfigForm.xClientId,
           isActive: toyotaConfigForm.isActive,
         };
 
@@ -999,11 +1009,14 @@ export default function AdministrationPage() {
 
   // Handle environment change to auto-fill URLs
   const handleToyotaEnvChange = (env: string) => {
+    const defaults = env === 'QA' ? TOYOTA_CONFIG_DEFAULTS.QA : TOYOTA_CONFIG_DEFAULTS.PROD;
     setToyotaConfigForm(prev => ({
       ...prev,
       environment: env,
-      tokenUrl: env === 'QA' ? TOYOTA_CONFIG_DEFAULTS.QA.tokenUrl : TOYOTA_CONFIG_DEFAULTS.PROD.tokenUrl,
-      apiBaseUrl: env === 'QA' ? TOYOTA_CONFIG_DEFAULTS.QA.apiBaseUrl : TOYOTA_CONFIG_DEFAULTS.PROD.apiBaseUrl,
+      tokenUrl: defaults.tokenUrl,
+      apiBaseUrl: defaults.apiBaseUrl,
+      resourceUrl: defaults.resourceUrl,
+      xClientId: defaults.xClientId,
     }));
   };
 
@@ -3112,6 +3125,30 @@ export default function AdministrationPage() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Resource URL *</label>
+            <Input
+              value={toyotaConfigForm.resourceUrl}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, resourceUrl: e.target.value})}
+              placeholder="https://tmnatest.onmicrosoft.com/..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              OAuth2 resource identifier (V2.1)
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">X-Client-ID *</label>
+            <Input
+              value={toyotaConfigForm.xClientId}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, xClientId: e.target.value})}
+              placeholder="a1012aed-c89a-49d3-a796-63a4345ecc98"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Client ID for API request headers (V2.1)
+            </p>
+          </div>
+
+          <div>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -3213,6 +3250,30 @@ export default function AdministrationPage() {
             />
             <p className="text-xs text-gray-500 mt-1">
               Base URL for Toyota API endpoints
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Resource URL *</label>
+            <Input
+              value={toyotaConfigForm.resourceUrl}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, resourceUrl: e.target.value})}
+              placeholder="https://tmnatest.onmicrosoft.com/..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              OAuth2 resource identifier (V2.1)
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">X-Client-ID *</label>
+            <Input
+              value={toyotaConfigForm.xClientId}
+              onChange={(e) => setToyotaConfigForm({...toyotaConfigForm, xClientId: e.target.value})}
+              placeholder="a1012aed-c89a-49d3-a796-63a4345ecc98"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Client ID for API request headers (V2.1)
             </p>
           </div>
 
