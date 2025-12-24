@@ -2,6 +2,7 @@
 // Date: 2025-12-06
 // Updated: 2025-12-13 - Updated to return ScanDetails instead of InternalKanbans
 // Updated: 2025-12-14 - Integrated Toyota API submission in CompleteSessionAsync
+// Updated: 2025-12-22 - Fixed Order.Status to set SkidBuildError when Toyota API fails
 // Description: Service for Skid Build operations - handles business logic and Toyota API integration
 
 using Backend.Models;
@@ -337,6 +338,24 @@ public class SkidBuildService : ISkidBuildService
                 }
             }
 
+            // GAP-015: TOYOTA VALIDATION - Validate palletization code matching
+            // Get the planned item to check its palletization code
+            var plannedItem = await _skidBuildRepository.GetPlannedItemByIdAsync(request.PlannedItemId);
+            if (plannedItem != null && !string.IsNullOrWhiteSpace(plannedItem.PalletizationCode)
+                && !string.IsNullOrWhiteSpace(request.PalletizationCode))
+            {
+                var palletizationValidation = _toyotaValidationService.ValidatePalletizationCode(
+                    request.PalletizationCode, // Manifest palletization (from scan)
+                    plannedItem.PalletizationCode); // Kanban palletization (from planned item)
+
+                if (!palletizationValidation.IsValid)
+                {
+                    return ApiResponse<SkidBuildScanResponseDto>.ErrorResponse(
+                        "Palletization Code Mismatch",
+                        palletizationValidation.ErrorMessage ?? "Palletization code validation failed");
+                }
+            }
+
             // Resolve user ID (use system user if not provided)
             var resolvedUserId = ResolveUserId(request.UserId);
 
@@ -596,7 +615,7 @@ public class SkidBuildService : ISkidBuildService
                     Palletization = skidGroup.Key.PalletizationCode ?? "",
                     SkidId = skidId,
                     Kanbans = toyotaKanbans,
-                    RfidDetails = null // RFID not implemented yet
+                    RfidDetails = new List<ToyotaRfidDetail> { new ToyotaRfidDetail { Rfid = "", Type = "" } } // GAP-001: Toyota spec requires empty array with empty object, not null
                 });
             }
 
@@ -632,12 +651,10 @@ public class SkidBuildService : ISkidBuildService
 
             var toyotaResponse = await _toyotaApiService.SubmitSkidBuildAsync(environment, toyotaRequest);
 
-            // Update order status to SkidBuilt (regardless of Toyota API result)
-            order.Status = OrderStatus.SkidBuilt;
-
             // ===== UPDATE ORDER WITH TOYOTA RESPONSE =====
             if (toyotaResponse.Success && !string.IsNullOrEmpty(toyotaResponse.ConfirmationNumber))
             {
+                order.Status = OrderStatus.SkidBuilt;
                 order.ToyotaSkidBuildConfirmationNumber = toyotaResponse.ConfirmationNumber;
                 order.ToyotaSkidBuildStatus = "confirmed";
                 order.ToyotaSkidBuildSubmittedAt = DateTime.UtcNow;
@@ -648,6 +665,7 @@ public class SkidBuildService : ISkidBuildService
             }
             else
             {
+                order.Status = OrderStatus.SkidBuildError;
                 order.ToyotaSkidBuildStatus = "error";
                 order.ToyotaSkidBuildErrorMessage = toyotaResponse.ErrorMessage ?? "Unknown error from Toyota API";
                 order.ToyotaSkidBuildSubmittedAt = DateTime.UtcNow;

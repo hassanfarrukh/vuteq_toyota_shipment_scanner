@@ -6,8 +6,8 @@
  * Helper functions for administration page API operations
  */
 
-import { officesApi, warehousesApi, usersApi } from '@/lib/api';
-import type { Office, OfficeDto, Warehouse, WarehouseDto, User, CreateUserDto, UpdateUserDto } from '@/lib/api';
+import { officesApi, warehousesApi, usersApi } from '@/lib/api/index';
+import type { Office, OfficeDto, Warehouse, WarehouseDto, User, CreateUserDto, UpdateUserDto } from '@/lib/api/index';
 
 // Office Operations
 export async function fetchOffices() {

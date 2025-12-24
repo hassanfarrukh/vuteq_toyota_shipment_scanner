@@ -17,4 +17,6 @@ public class OrderListDto
     public DateTime? OrderDate { get; set; }
     public string? Status { get; set; }
     public Guid? UploadId { get; set; }
+    public string? PlannedRoute { get; set; }
+    public string? MainRoute { get; set; }
 }

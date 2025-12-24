@@ -37,5 +37,15 @@ public enum OrderStatus
     /// <summary>
     /// Loaded and shipped
     /// </summary>
-    Shipped = 5
+    Shipped = 5,
+
+    /// <summary>
+    /// Error from Toyota API during Skid Build submission
+    /// </summary>
+    SkidBuildError = 6,
+
+    /// <summary>
+    /// Error from Toyota API during Shipment Load submission
+    /// </summary>
+    ShipmentError = 7
 }

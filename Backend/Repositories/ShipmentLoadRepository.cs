@@ -1,5 +1,6 @@
 // Author: Hassan
 // Date: 2025-12-08
+// Updated: 2025-12-24 - Added GetSkidBuildExceptionsByOrderIdAsync to support skid build exceptions in shipment load
 // Description: Repository for Shipment Load operations - handles data access using EF Core
 
 using Backend.Data;
@@ -24,6 +25,7 @@ public interface IShipmentLoadRepository
 
     // Order operations
     Task<List<Order>> GetOrdersByRouteAsync(string routeNumber);
+    Task<List<Order>> GetAllOrdersByRouteAsync(string routeNumber); // All orders regardless of status
     Task<Order?> GetOrderByNumberAndDockAsync(string orderNumber, string dockCode);
     Task<int> GetSkidScansCountForOrderAsync(Guid orderId);
     Task UpdateOrdersAsync(List<Order> orders);
@@ -37,6 +39,9 @@ public interface IShipmentLoadRepository
     // Exception operations
     Task<ShipmentLoadException> AddExceptionAsync(ShipmentLoadException exception);
     Task DeleteExceptionAsync(Guid exceptionId);
+
+    // Skid Build Exception operations
+    Task<List<SkidBuildException>> GetSkidBuildExceptionsByOrderIdAsync(Guid orderId);
 }
 
 /// <summary>
@@ -82,6 +87,38 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving orders for route: {RouteNumber}", routeNumber);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get ALL orders for a route regardless of status
+    /// Used to validate all orders on route have completed skid build before shipment
+    /// Normalizes route comparison by removing hyphens (e.g., JAAJ17 matches JAAJ-17)
+    /// </summary>
+    public async Task<List<Order>> GetAllOrdersByRouteAsync(string routeNumber)
+    {
+        try
+        {
+            // Normalize input route by removing hyphens
+            var normalizedRoute = routeNumber.Replace("-", "");
+
+            // Also try with hyphen inserted before last 2 digits (e.g., JAAJ17 -> JAAJ-17)
+            var routeWithHyphen = normalizedRoute.Length > 2
+                ? normalizedRoute.Insert(normalizedRoute.Length - 2, "-")
+                : normalizedRoute;
+
+            return await _context.Orders
+                .Where(o =>
+                    o.PlannedRoute == normalizedRoute ||
+                    o.PlannedRoute == routeWithHyphen ||
+                    o.PlannedRoute == routeNumber)
+                .OrderBy(o => o.RealOrderNumber)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving all orders for route: {RouteNumber}", routeNumber);
             throw;
         }
     }
@@ -189,21 +226,26 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
     // ===== SESSION OPERATIONS =====
 
     /// <summary>
-    /// Get active session for a route (status = "active")
+    /// Get resumable session for a route (status = "active" or "error")
+    /// Sessions with "error" status can be resumed so users can retry after Toyota API failures
     /// </summary>
     public async Task<ShipmentLoadSession?> GetActiveSessionByRouteAsync(string routeNumber)
     {
         try
         {
+            // Find the most recent session that can be resumed (active or error)
+            // This allows users to retry after Toyota API failures without losing their work
             return await _context.ShipmentLoadSessions
                 .Include(s => s.ShipmentLoadExceptions)
-                .FirstOrDefaultAsync(s =>
+                .Where(s =>
                     s.RouteNumber == routeNumber &&
-                    s.Status == "active");
+                    (s.Status == "active" || s.Status == "error"))
+                .OrderByDescending(s => s.CreatedAt)
+                .FirstOrDefaultAsync();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving active session for route: {RouteNumber}", routeNumber);
+            _logger.LogError(ex, "Error retrieving resumable session for route: {RouteNumber}", routeNumber);
             throw;
         }
     }
@@ -430,6 +472,27 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting exception: {ExceptionId}", exceptionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get all skid build exceptions for an order
+    /// These are exceptions recorded during skid build that need to be included in shipment load
+    /// </summary>
+    public async Task<List<SkidBuildException>> GetSkidBuildExceptionsByOrderIdAsync(Guid orderId)
+    {
+        try
+        {
+            return await _context.SkidBuildExceptions
+                .Where(e => e.OrderId == orderId)
+                .OrderBy(e => e.SkidNumber)
+                .ThenBy(e => e.CreatedAt)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving skid build exceptions for order: {OrderId}", orderId);
             throw;
         }
     }

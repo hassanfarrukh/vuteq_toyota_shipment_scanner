@@ -928,7 +928,7 @@ export default function PreShipmentScanPage() {
             <>
               {/* Active Shipment Indicator */}
               {activeShipmentId && (
-                <Card style={{ backgroundColor: '#E8F5E9' }}>
+                <Card className="bg-[#E8F5E9]">
                   <CardContent className="p-3 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -986,7 +986,7 @@ export default function PreShipmentScanPage() {
               )}
 
               {/* Scan Input with Header */}
-              <Card style={{ backgroundColor: '#FCFCFC' }}>
+              <Card className="bg-[#FCFCFC]">
                 <CardContent className="p-3 space-y-3">
                   {/* Header */}
                   <div className="flex items-center gap-3 pb-2 border-b border-gray-200">
@@ -1014,7 +1014,7 @@ export default function PreShipmentScanPage() {
 
               {/* Shipments Table */}
               {shipments.length > 0 && (
-                <Card style={{ backgroundColor: '#FCFCFC' }}>
+                <Card className="bg-[#FCFCFC]">
                   <CardHeader>
                     <CardTitle>Shipments</CardTitle>
                   </CardHeader>
@@ -1101,11 +1101,11 @@ export default function PreShipmentScanPage() {
 
               {/* No shipments message */}
               {shipments.length === 0 && (
-                <Card style={{ backgroundColor: '#FCFCFC' }}>
+                <Card className="bg-[#FCFCFC]">
                   <CardContent className="p-6 text-center text-gray-500">
                     <i className="fa fa-inbox text-4xl mb-2" style={{ color: '#253262', opacity: 0.3 }}></i>
                     <p>No shipments found</p>
-                    <p className="text-sm mt-1">Click "New Shipment" to begin</p>
+                    <p className="text-sm mt-1">Click &quot;New Shipment&quot; to begin</p>
                   </CardContent>
                 </Card>
               )}
@@ -1114,7 +1114,7 @@ export default function PreShipmentScanPage() {
 
           {/* SCREEN 2: Scan Pickup Route QR (Copied EXACTLY from shipment-load Screen 1) */}
           {currentScreen === 2 && (activeShipmentId || currentManifest) && (
-            <Card style={{ backgroundColor: '#FCFCFC' }}>
+            <Card className="bg-[#FCFCFC]">
               <CardContent className="p-3 space-y-3">
                 {/* Header with Icon */}
                 <div className="flex items-center gap-3 pb-2 border-b border-gray-200">
@@ -1405,7 +1405,7 @@ export default function PreShipmentScanPage() {
             <>
               {/* Loading Progress - Collapsible */}
               {scannedSkids.length > 0 && (
-                <Card style={{ backgroundColor: '#E8F5E9' }}>
+                <Card className="bg-[#E8F5E9]">
                   <CardHeader className="p-0">
                     <div
                       className={`flex items-center justify-between cursor-pointer hover:bg-green-100 transition-colors ${

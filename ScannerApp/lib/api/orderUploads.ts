@@ -157,6 +157,8 @@ export interface OrderDto {
   status: string;
   uploadId: string;
   uploadFileName?: string;
+  plannedRoute?: string;
+  mainRoute?: string;
 }
 
 /**

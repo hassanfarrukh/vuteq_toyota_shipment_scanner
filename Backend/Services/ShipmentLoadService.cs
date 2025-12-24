@@ -1,5 +1,9 @@
 // Author: Hassan
 // Date: 2025-12-17
+// Updated: 2025-12-22 - Fixed Order.Status to set ShipmentError when Toyota API fails
+// Updated: 2025-12-22 - Fixed IsScanned logic to only check current session (removed status check)
+// Updated: 2025-12-24 - Fixed skid build exceptions not being included in Toyota shipment load payload
+// Updated: 2025-12-24 - Fixed exception code mapping: Skid Build code 12 -> Shipment Load code 24 at trailer level
 // Description: Service for Shipment Load operations - Toyota SCS integration with session management
 
 using Backend.Models;
@@ -44,6 +48,7 @@ public class ShipmentLoadService : IShipmentLoadService
 {
     private readonly IShipmentLoadRepository _repository;
     private readonly IToyotaApiService _toyotaApiService;
+    private readonly IToyotaValidationService _toyotaValidationService;
     private readonly ILogger<ShipmentLoadService> _logger;
 
     // System user ID for operations when user is not authenticated
@@ -52,10 +57,12 @@ public class ShipmentLoadService : IShipmentLoadService
     public ShipmentLoadService(
         IShipmentLoadRepository repository,
         IToyotaApiService toyotaApiService,
+        IToyotaValidationService toyotaValidationService,
         ILogger<ShipmentLoadService> logger)
     {
         _repository = repository;
         _toyotaApiService = toyotaApiService;
+        _toyotaValidationService = toyotaValidationService;
         _logger = logger;
     }
 
@@ -99,6 +106,36 @@ public class ShipmentLoadService : IShipmentLoadService
                     request.OrderNumber, request.DockCode, order.Status, scannedOrderSkidCount);
             }
 
+            // ===== VALIDATE ALL ORDERS ON ROUTE HAVE COMPLETED SKID BUILD =====
+            // Get ALL orders on this route (regardless of status) to check if any are not ready
+            var allOrdersOnRoute = await _repository.GetAllOrdersByRouteAsync(request.RouteNumber);
+
+            if (allOrdersOnRoute.Count == 0)
+            {
+                return ApiResponse<SessionResponseDto>.ErrorResponse(
+                    "No orders found",
+                    $"No orders found for route '{request.RouteNumber}'. Please verify the route number.");
+            }
+
+            // Check for orders that haven't completed skid build
+            var ordersNotReady = allOrdersOnRoute
+                .Where(o => o.Status < OrderStatus.SkidBuilt)
+                .Select(o => $"{o.RealOrderNumber} (Status: {o.Status})")
+                .ToList();
+
+            if (ordersNotReady.Any())
+            {
+                _logger.LogWarning("Cannot start shipment for route {RouteNumber} - {Count} orders not ready: {Orders}",
+                    request.RouteNumber, ordersNotReady.Count, string.Join(", ", ordersNotReady));
+
+                return ApiResponse<SessionResponseDto>.ErrorResponse(
+                    "Orders not ready for shipment",
+                    $"The following orders have not completed skid build: {string.Join(", ", ordersNotReady)}. All orders on the route must complete skid build before starting shipment.");
+            }
+
+            _logger.LogInformation("All {Count} orders on route {RouteNumber} are ready for shipment",
+                allOrdersOnRoute.Count, request.RouteNumber);
+
             // Check if active session exists for this route
             var existingSession = await _repository.GetActiveSessionByRouteAsync(request.RouteNumber);
 
@@ -106,8 +143,21 @@ public class ShipmentLoadService : IShipmentLoadService
 
             if (existingSession != null)
             {
-                _logger.LogInformation("Resuming existing session: {SessionId}", existingSession.SessionId);
+                _logger.LogInformation("Resuming existing session: {SessionId}, Status: {Status}",
+                    existingSession.SessionId, existingSession.Status);
                 isResumed = true;
+
+                // If session was in error state (from previous Toyota API failure), reset to active
+                // This allows users to retry the shipment
+                if (existingSession.Status == "error")
+                {
+                    _logger.LogInformation("Resetting error session {SessionId} to active for retry", existingSession.SessionId);
+                    existingSession.Status = "active";
+                    existingSession.ToyotaStatus = null;
+                    existingSession.ToyotaErrorMessage = null;
+                    existingSession.UpdatedAt = DateTime.UtcNow;
+                    await _repository.UpdateSessionAsync(existingSession);
+                }
             }
             else
             {
@@ -446,8 +496,54 @@ public class ShipmentLoadService : IShipmentLoadService
             // 3. Get exceptions
             var exceptions = await _repository.GetSessionExceptionsAsync(request.SessionId);
 
+            // GAP-002: Validate driver names when dropHook=false (VUTEQ always has dropHook=false)
+            if (string.IsNullOrWhiteSpace(session.DriverFirstName) || string.IsNullOrWhiteSpace(session.DriverLastName))
+            {
+                return ApiResponse<ShipmentLoadCompleteResponseDto>.ErrorResponse(
+                    "Driver information required",
+                    "Driver first name and last name are required when drop-and-hook is disabled");
+            }
+
             // 4. Build Toyota API payload
             var toyotaPayload = await BuildToyotaPayloadAsync(session, orders, exceptions);
+
+            // GAP-003 & GAP-004: Validate Code 99 (Unplanned Expedite) rules
+            var trailerExceptions = exceptions.Where(e => string.IsNullOrEmpty(e.RelatedSkidId)).ToList();
+            var hasCode99 = trailerExceptions.Any(e => e.ExceptionType == "99");
+
+            if (hasCode99)
+            {
+                // GAP-003: Route must start with "EX-" prefix when code 99 is used
+                if (!session.RouteNumber.StartsWith("EX-", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponse<ShipmentLoadCompleteResponseDto>.ErrorResponse(
+                        "Code 99 validation failed",
+                        "Unplanned Expedite (code 99) requires route to start with 'EX-' prefix");
+                }
+
+                // GAP-004: All skids must have at least one exception when code 99 is used
+                var allSkidIds = new HashSet<string>();
+                foreach (var order in orders)
+                {
+                    var skidScans = await _repository.GetSkidScansByOrderIdAsync(order.OrderId);
+                    foreach (var scan in skidScans)
+                    {
+                        if (!string.IsNullOrEmpty(scan.RawSkidId))
+                            allSkidIds.Add(scan.RawSkidId);
+                    }
+                }
+
+                var skidExceptions = exceptions.Where(e => !string.IsNullOrEmpty(e.RelatedSkidId)).ToList();
+                var skidsWithExceptions = new HashSet<string>(skidExceptions.Select(e => e.RelatedSkidId!));
+                var skidsWithoutExceptions = allSkidIds.Except(skidsWithExceptions).ToList();
+
+                if (skidsWithoutExceptions.Any())
+                {
+                    return ApiResponse<ShipmentLoadCompleteResponseDto>.ErrorResponse(
+                        "Code 99 validation failed",
+                        $"Unplanned Expedite (code 99) requires all skids to have exceptions. Missing exceptions for: {string.Join(", ", skidsWithoutExceptions)}");
+                }
+            }
 
             // 5. Submit to Toyota API (using default environment for now - could be configurable)
             var toyotaResponse = await _toyotaApiService.SubmitShipmentLoadAsync("QA", toyotaPayload);
@@ -466,6 +562,18 @@ public class ShipmentLoadService : IShipmentLoadService
             if (!toyotaResponse.Success)
             {
                 _logger.LogError("Toyota API submission failed: {Error}", toyotaResponse.ErrorMessage);
+
+                // Update all orders with error status
+                foreach (var order in orders)
+                {
+                    order.Status = OrderStatus.ShipmentError;
+                    order.ToyotaShipmentStatus = "error";
+                    order.ToyotaShipmentErrorMessage = toyotaResponse.ErrorMessage ?? "Unknown error from Toyota API";
+                    order.ToyotaShipmentSubmittedAt = DateTime.UtcNow;
+                    order.UpdatedAt = DateTime.UtcNow;
+                }
+                await _repository.UpdateOrdersAsync(orders);
+
                 return ApiResponse<ShipmentLoadCompleteResponseDto>.ErrorResponse(
                     "Toyota API submission failed",
                     toyotaResponse.ErrorMessage ?? "Unknown error");
@@ -680,7 +788,7 @@ public class ShipmentLoadService : IShipmentLoadService
             PlannedRoute = o.PlannedRoute,
             Status = o.Status.ToString(),
             TotalSkids = 0, // Would need to query if needed
-            IsScanned = o.Status == OrderStatus.ShipmentLoading || o.ShipmentLoadSessionId == session.SessionId
+            IsScanned = o.ShipmentLoadSessionId == session.SessionId
         }).ToList();
 
         var exceptionDtos = exceptions.Select(e => new ExceptionDto
@@ -717,19 +825,94 @@ public class ShipmentLoadService : IShipmentLoadService
 
     /// <summary>
     /// Build Toyota API payload from session, orders, and exceptions
+    /// IMPORTANT: This method now includes BOTH shipment load exceptions AND skid build exceptions
+    /// Maps Skid Build exception codes to Shipment Load codes and moves shortage to trailer level
     /// </summary>
     private async Task<ToyotaShipmentLoadRequest> BuildToyotaPayloadAsync(
         ShipmentLoadSession session,
         List<Order> orders,
-        List<ShipmentLoadException> exceptions)
+        List<ShipmentLoadException> shipmentLoadExceptions)
     {
         var (route, run) = ParseRouteAndRun(session.RouteNumber);
 
         var rootSupplierCode = orders.First().SupplierCode!;
 
+        // GAP-010 to GAP-014: Validate field formats before building payload
+        var routeValidation = _toyotaValidationService.ValidateRoute(route);
+        if (!routeValidation.IsValid)
+            throw new InvalidOperationException($"Route validation failed: {routeValidation.ErrorMessage}");
+
+        var trailerValidation = _toyotaValidationService.ValidateTrailerNumber(session.TrailerNumber!);
+        if (!trailerValidation.IsValid)
+            throw new InvalidOperationException($"Trailer number validation failed: {trailerValidation.ErrorMessage}");
+
+        if (!string.IsNullOrWhiteSpace(session.SealNumber))
+        {
+            var sealValidation = _toyotaValidationService.ValidateSealNumber(session.SealNumber);
+            if (!sealValidation.IsValid)
+                throw new InvalidOperationException($"Seal number validation failed: {sealValidation.ErrorMessage}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(session.LpCode) && session.LpCode != "XXXX")
+        {
+            var lpCodeValidation = _toyotaValidationService.ValidateLpCode(session.LpCode);
+            if (!lpCodeValidation.IsValid)
+                throw new InvalidOperationException($"lpCode validation failed: {lpCodeValidation.ErrorMessage}");
+        }
+
+        var driverNameValidation = _toyotaValidationService.ValidateDriverName(
+            session.DriverFirstName ?? "", session.DriverLastName ?? "");
+        if (!driverNameValidation.IsValid)
+            throw new InvalidOperationException($"Driver name validation failed: {driverNameValidation.ErrorMessage}");
+
+        if (!string.IsNullOrWhiteSpace(session.SupplierFirstName) || !string.IsNullOrWhiteSpace(session.SupplierLastName))
+        {
+            var supplierNameValidation = _toyotaValidationService.ValidateSupplierName(
+                session.SupplierFirstName ?? "", session.SupplierLastName ?? "");
+            if (!supplierNameValidation.IsValid)
+                throw new InvalidOperationException($"Supplier name validation failed: {supplierNameValidation.ErrorMessage}");
+        }
+
         _logger.LogInformation(
             "Building Toyota payload - ROOT Level Supplier: {RootSupplier}, Route: {Route}, Run: {Run}, Trailer: {Trailer}",
             rootSupplierCode, route, run, session.TrailerNumber);
+
+        // Collect all shortage exceptions from skid build to move to trailer level
+        var allSkidBuildExceptions = new List<SkidBuildException>();
+        foreach (var order in orders)
+        {
+            var orderExceptions = await _repository.GetSkidBuildExceptionsByOrderIdAsync(order.OrderId);
+            allSkidBuildExceptions.AddRange(orderExceptions);
+        }
+
+        // Map Skid Build code 12 (Supplier Revised Shortage) to Shipment Load code 24 and add to trailer level
+        var trailerExceptions = shipmentLoadExceptions
+            .Where(e => string.IsNullOrEmpty(e.RelatedSkidId)) // Existing trailer-level exceptions
+            .Select(e => new ToyotaException
+            {
+                ExceptionCode = e.ExceptionType!,
+                Comments = e.Comments
+            }).ToList();
+
+        // Add shortage exceptions (code 12 from skid build) as code 24 at trailer level
+        var shortageExceptions = allSkidBuildExceptions
+            .Where(e => e.ExceptionCode == "12") // Skid Build shortage code
+            .GroupBy(e => e.Comments ?? "") // Group by comments to avoid duplicates
+            .Select(g => g.First()) // Take first from each group
+            .Select(e => new ToyotaException
+            {
+                ExceptionCode = "24", // Shipment Load shortage code
+                Comments = e.Comments
+            }).ToList();
+
+        trailerExceptions.AddRange(shortageExceptions);
+
+        if (shortageExceptions.Any())
+        {
+            _logger.LogInformation(
+                "Mapped {Count} Skid Build shortage exceptions (code 12) to Shipment Load code 24 at trailer level",
+                shortageExceptions.Count);
+        }
 
         var payload = new ToyotaShipmentLoadRequest
         {
@@ -744,13 +927,7 @@ public class ShipmentLoadService : IShipmentLoadService
             DriverTeamLastName = session.DriverLastName,
             SupplierTeamFirstName = session.SupplierFirstName,
             SupplierTeamLastName = session.SupplierLastName,
-            Exceptions = exceptions
-                .Where(e => string.IsNullOrEmpty(e.RelatedSkidId)) // Trailer-level exceptions only
-                .Select(e => new ToyotaException
-                {
-                    ExceptionCode = e.ExceptionType!,
-                    Comments = e.Comments
-                }).ToList(),
+            Exceptions = trailerExceptions, // Now includes mapped shortage exceptions
             Orders = new List<ToyotaShipmentOrder>()
         };
 
@@ -759,11 +936,14 @@ public class ShipmentLoadService : IShipmentLoadService
         {
             var skidScans = await _repository.GetSkidScansByOrderIdAsync(order.OrderId);
 
+            // Get skid build exceptions for this order
+            var skidBuildExceptions = await _repository.GetSkidBuildExceptionsByOrderIdAsync(order.OrderId);
+
             var orderSupplierCode = order.SupplierCode!;
 
             _logger.LogInformation(
-                "Building Toyota payload - ORDER Level: Order={Order}, Supplier={OrderSupplier}, Plant={Plant}, Dock={Dock}, Skids={SkidCount}",
-                order.RealOrderNumber, orderSupplierCode, order.PlantCode, order.DockCode, skidScans.Count);
+                "Building Toyota payload - ORDER Level: Order={Order}, Supplier={OrderSupplier}, Plant={Plant}, Dock={Dock}, Skids={SkidCount}, SkidBuildExceptions={ExceptionCount}",
+                order.RealOrderNumber, orderSupplierCode, order.PlantCode, order.DockCode, skidScans.Count, skidBuildExceptions.Count);
 
             var toyotaOrder = new ToyotaShipmentOrder
             {
@@ -777,13 +957,7 @@ public class ShipmentLoadService : IShipmentLoadService
                     SkidId = scan.RawSkidId!, // Use RawSkidId which includes side (e.g., "001A")
                     Palletization = scan.PalletizationCode!,
                     SkidCut = scan.IsSkidCut,
-                    Exceptions = exceptions
-                        .Where(e => e.RelatedSkidId == scan.RawSkidId) // Match by RawSkidId (e.g., "001A")
-                        .Select(e => new ToyotaException
-                        {
-                            ExceptionCode = e.ExceptionType!,
-                            Comments = e.Comments
-                        }).ToList()
+                    Exceptions = BuildSkidExceptions(scan, shipmentLoadExceptions, skidBuildExceptions)
                 }).ToList()
             };
 
@@ -791,9 +965,96 @@ public class ShipmentLoadService : IShipmentLoadService
         }
 
         _logger.LogInformation(
-            "Toyota payload built - Total Orders: {OrderCount}, ROOT Supplier: {RootSupplier}",
-            payload.Orders.Count, payload.Supplier);
+            "Toyota payload built - Total Orders: {OrderCount}, ROOT Supplier: {RootSupplier}, Trailer Exceptions (including mapped shortages): {TrailerExceptionCount}",
+            payload.Orders.Count, payload.Supplier, payload.Exceptions.Count);
 
         return payload;
+    }
+
+    /// <summary>
+    /// Build exceptions list for a specific skid
+    /// Combines both shipment load exceptions and skid build exceptions
+    /// Filters out shortage exceptions (code 12/24) - these go to trailer level only
+    /// Only includes valid Shipment Load skid-level codes: 14, 15, 18, 19, 21, 22, 23
+    /// </summary>
+    /// <param name="scan">The skid scan record</param>
+    /// <param name="shipmentLoadExceptions">Exceptions from shipment load session</param>
+    /// <param name="skidBuildExceptions">Exceptions from skid build session</param>
+    /// <returns>List of Toyota exceptions for this skid</returns>
+    private List<ToyotaException> BuildSkidExceptions(
+        SkidScan scan,
+        List<ShipmentLoadException> shipmentLoadExceptions,
+        List<SkidBuildException> skidBuildExceptions)
+    {
+        var exceptions = new List<ToyotaException>();
+
+        // Valid skid-level exception codes for Shipment Load
+        var validSkidLevelCodes = new HashSet<string> { "14", "15", "18", "19", "21", "22", "23" };
+
+        // Add shipment load exceptions that match this skid's RawSkidId
+        // Filter out code 24 (shortage) - it belongs at trailer level only
+        var shipmentExceptions = shipmentLoadExceptions
+            .Where(e => e.RelatedSkidId == scan.RawSkidId &&
+                       validSkidLevelCodes.Contains(e.ExceptionType ?? ""))
+            .Select(e => new ToyotaException
+            {
+                ExceptionCode = e.ExceptionType!,
+                Comments = e.Comments
+            });
+        exceptions.AddRange(shipmentExceptions);
+
+        // Add skid build exceptions for this skid
+        // Match by SkidNumber (the numeric part without side, e.g., "001" matches "001A")
+        // OR if exception has no SkidNumber (order-level exception), include it for all skids
+        // Filter out code 12 (shortage) - it gets mapped to code 24 and moved to trailer level
+        // Map other codes if needed (currently no other mappings needed)
+        var skidExceptions = skidBuildExceptions
+            .Where(e => (e.SkidNumber == null || // Order-level exception - include for all skids
+                        e.SkidNumber.Value.ToString().PadLeft(3, '0') == scan.SkidNumber.ToString().PadLeft(3, '0')) && // Skid-level exception matching this skid
+                        e.ExceptionCode != "12") // Filter out shortage - goes to trailer level as code 24
+            .Select(e => new ToyotaException
+            {
+                ExceptionCode = MapSkidBuildToShipmentLoadCode(e.ExceptionCode),
+                Comments = e.Comments
+            });
+        exceptions.AddRange(skidExceptions);
+
+        if (exceptions.Any())
+        {
+            _logger.LogInformation(
+                "Skid {SkidId} has {ExceptionCount} valid skid-level exceptions (ShipmentLoad: {ShipmentCount}, SkidBuild: {SkidBuildCount})",
+                scan.RawSkidId,
+                exceptions.Count,
+                shipmentExceptions.Count(),
+                skidExceptions.Count());
+        }
+
+        return exceptions;
+    }
+
+    /// <summary>
+    /// Map Skid Build exception codes to Shipment Load exception codes
+    /// Skid Build uses different codes than Shipment Load for the same exception
+    /// </summary>
+    /// <param name="skidBuildCode">Exception code from Skid Build (e.g., "10", "11", "12", "20")</param>
+    /// <returns>Mapped Shipment Load exception code</returns>
+    private string MapSkidBuildToShipmentLoadCode(string skidBuildCode)
+    {
+        // NOTE: Code 12 (shortage) is handled separately - it goes to trailer level as code 24
+        // This method handles other codes that appear at skid level
+
+        // Currently, other skid build codes (10, 11, 20) don't have skid-level equivalents in shipment load
+        // They would typically be order-level or trailer-level exceptions
+        // For now, return as-is, but this can be extended if needed
+
+        return skidBuildCode switch
+        {
+            // Code 12 should never reach here - it's filtered out in BuildSkidExceptions
+            "12" => throw new InvalidOperationException("Code 12 (shortage) should not be at skid level"),
+
+            // Other codes - currently no mapping needed
+            // If Toyota requires different codes for shipment load, add mappings here
+            _ => skidBuildCode
+        };
     }
 }

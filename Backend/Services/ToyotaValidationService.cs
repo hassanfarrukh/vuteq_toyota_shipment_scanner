@@ -37,6 +37,12 @@ public interface IToyotaValidationService
     ValidationResult ValidatePalletizationCode(string manifestPalletization, string kanbanPalletization);
     ValidationResult ValidateNoSpecialCharacters(string value, string fieldName);
     ValidationResult ValidateUpperCase(string value, string fieldName);
+    ValidationResult ValidateRoute(string route);
+    ValidationResult ValidateTrailerNumber(string trailerNumber);
+    ValidationResult ValidateSealNumber(string sealNumber);
+    ValidationResult ValidateLpCode(string lpCode);
+    ValidationResult ValidateDriverName(string firstName, string lastName);
+    ValidationResult ValidateSupplierName(string firstName, string lastName);
 }
 
 /// <summary>
@@ -45,10 +51,13 @@ public interface IToyotaValidationService
 /// </summary>
 public class ToyotaValidationService : IToyotaValidationService
 {
-    // Valid exception codes for different levels
-    private static readonly HashSet<string> ValidSkidBuildExceptionCodes = new() { "10", "11", "12", "20" };
-    private static readonly HashSet<string> ValidShipmentLoadTrailerExceptionCodes = new() { "13", "17", "24", "99" };
-    private static readonly HashSet<string> ValidShipmentLoadSkidExceptionCodes = new() { "14", "15", "18", "19", "21", "22" };
+    // Valid exception codes for different levels (Toyota API Spec V2.1)
+    // GAP-005: Added code 26 (Others) to Skid Build
+    private static readonly HashSet<string> ValidSkidBuildExceptionCodes = new() { "10", "11", "12", "20", "26" };
+    // GAP-006, GAP-007, GAP-008: Added codes 16 (Freight Pulled Ahead Already), 25 (Toyota Instructed Delay), 27 (Others)
+    private static readonly HashSet<string> ValidShipmentLoadTrailerExceptionCodes = new() { "13", "16", "17", "24", "25", "27", "99" };
+    // GAP-009: Added code 23 (Freight Pull Ahead - At Pallet Level)
+    private static readonly HashSet<string> ValidShipmentLoadSkidExceptionCodes = new() { "14", "15", "18", "19", "21", "22", "23" };
 
     /// <summary>
     /// Validate Order Number format
@@ -339,6 +348,147 @@ public class ToyotaValidationService : IToyotaValidationService
 
         if (alphaChars.Length > 0 && alphaChars != alphaChars.ToUpper())
             return ValidationResult.Error($"{fieldName} alpha characters must be uppercase");
+
+        return ValidationResult.Success();
+    }
+
+    /// <summary>
+    /// GAP-010: Validate Route format
+    /// Rule: 7 characters max, alpha characters must be uppercase
+    /// Source: Toyota API Spec V2.1 Page 23-24 - Shipment Load Trailer Level
+    /// </summary>
+    public ValidationResult ValidateRoute(string route)
+    {
+        if (string.IsNullOrWhiteSpace(route))
+            return ValidationResult.Error("Route is required");
+
+        // Max 7 characters
+        if (route.Length > 7)
+            return ValidationResult.Error("Route must be 7 characters or less");
+
+        // No special characters
+        var noSpecialCharsResult = ValidateNoSpecialCharacters(route, "Route");
+        if (!noSpecialCharsResult.IsValid)
+            return noSpecialCharsResult;
+
+        // Alpha characters must be uppercase
+        var upperCaseResult = ValidateUpperCase(route, "Route");
+        if (!upperCaseResult.IsValid)
+            return upperCaseResult;
+
+        return ValidationResult.Success();
+    }
+
+    /// <summary>
+    /// GAP-011: Validate Trailer Number
+    /// Rule: 20 characters max
+    /// Source: Toyota API Spec V2.1 Page 23 - Shipment Load Trailer Level
+    /// </summary>
+    public ValidationResult ValidateTrailerNumber(string trailerNumber)
+    {
+        if (string.IsNullOrWhiteSpace(trailerNumber))
+            return ValidationResult.Error("Trailer number is required");
+
+        // Max 20 characters
+        if (trailerNumber.Length > 20)
+            return ValidationResult.Error("Trailer number must be 20 characters or less");
+
+        return ValidationResult.Success();
+    }
+
+    /// <summary>
+    /// GAP-012: Validate Seal Number
+    /// Rule: 20 characters max, alpha characters must be uppercase
+    /// Source: Toyota API Spec V2.1 Page 23 - Shipment Load Trailer Level
+    /// </summary>
+    public ValidationResult ValidateSealNumber(string sealNumber)
+    {
+        if (string.IsNullOrWhiteSpace(sealNumber))
+            return ValidationResult.Success(); // Seal number is optional
+
+        // Max 20 characters
+        if (sealNumber.Length > 20)
+            return ValidationResult.Error("Seal number must be 20 characters or less");
+
+        // No special characters
+        var noSpecialCharsResult = ValidateNoSpecialCharacters(sealNumber, "Seal number");
+        if (!noSpecialCharsResult.IsValid)
+            return noSpecialCharsResult;
+
+        // Alpha characters must be uppercase
+        var upperCaseResult = ValidateUpperCase(sealNumber, "Seal number");
+        if (!upperCaseResult.IsValid)
+            return upperCaseResult;
+
+        return ValidationResult.Success();
+    }
+
+    /// <summary>
+    /// GAP-013: Validate lpCode (Logistics Partner SCAC code)
+    /// Rule: 6 characters max
+    /// Source: Toyota API Spec V2.1 Page 23 - Shipment Load Trailer Level
+    /// </summary>
+    public ValidationResult ValidateLpCode(string lpCode)
+    {
+        if (string.IsNullOrWhiteSpace(lpCode))
+            return ValidationResult.Success(); // lpCode is optional (defaults to XXXX)
+
+        // Max 6 characters
+        if (lpCode.Length > 6)
+            return ValidationResult.Error("lpCode must be 6 characters or less");
+
+        return ValidationResult.Success();
+    }
+
+    /// <summary>
+    /// GAP-014: Validate Driver Name
+    /// Rule: First name 9 chars max, Last name 12 chars max
+    /// Source: Toyota API Spec V2.1 Page 23 - Shipment Load Trailer Level
+    /// </summary>
+    public ValidationResult ValidateDriverName(string firstName, string lastName)
+    {
+        if (string.IsNullOrWhiteSpace(firstName))
+            return ValidationResult.Error("Driver first name is required");
+
+        if (string.IsNullOrWhiteSpace(lastName))
+            return ValidationResult.Error("Driver last name is required");
+
+        // First name max 9 characters
+        if (firstName.Length > 9)
+            return ValidationResult.Error("Driver first name must be 9 characters or less");
+
+        // Last name max 12 characters
+        if (lastName.Length > 12)
+            return ValidationResult.Error("Driver last name must be 12 characters or less");
+
+        return ValidationResult.Success();
+    }
+
+    /// <summary>
+    /// GAP-014: Validate Supplier Name
+    /// Rule: First name 9 chars max, Last name 12 chars max
+    /// Source: Toyota API Spec V2.1 Page 23 - Shipment Load Trailer Level
+    /// </summary>
+    public ValidationResult ValidateSupplierName(string firstName, string lastName)
+    {
+        // Supplier name is optional
+        if (string.IsNullOrWhiteSpace(firstName) && string.IsNullOrWhiteSpace(lastName))
+            return ValidationResult.Success();
+
+        // If one is provided, both should be provided
+        if (string.IsNullOrWhiteSpace(firstName) && !string.IsNullOrWhiteSpace(lastName))
+            return ValidationResult.Error("Supplier first name is required when last name is provided");
+
+        if (!string.IsNullOrWhiteSpace(firstName) && string.IsNullOrWhiteSpace(lastName))
+            return ValidationResult.Error("Supplier last name is required when first name is provided");
+
+        // First name max 9 characters
+        if (!string.IsNullOrWhiteSpace(firstName) && firstName.Length > 9)
+            return ValidationResult.Error("Supplier first name must be 9 characters or less");
+
+        // Last name max 12 characters
+        if (!string.IsNullOrWhiteSpace(lastName) && lastName.Length > 12)
+            return ValidationResult.Error("Supplier last name must be 12 characters or less");
 
         return ValidationResult.Success();
     }

@@ -19,6 +19,8 @@
  * Updated: 2025-12-20 - SCREEN 3 UI REDESIGN: Grouped skids BY ORDER with nested collapsibles (matches TSCS Mobile workflow)
  * Updated: 2025-12-20 - Added "Planned Orders" section with order-level grouping and skid build status validation
  * Updated: 2025-12-20 - Added "Scanned Orders" section mirroring planned structure with order grouping
+ * Updated: 2025-12-22 - CRITICAL FIX: Auto-populate trailer data when session is resumed (isResumed=true)
+ * Updated: 2025-12-22 - CRITICAL FIX: Restore scanned items when session is resumed (check order.isScanned flag)
  *
  * SCREEN FLOW:
  * 1. Scan Pickup Route QR → Parse and store → Continue to Screen 2
@@ -76,13 +78,31 @@ import {
 // Screen types
 type Screen = 1 | 2 | 3 | 4;
 
-// Toyota-specific exception types (matching skid-build)
-// Author: Hassan, 2025-11-05
-const EXCEPTION_TYPES = [
-  'Revised Quantity (Toyota Quantity Reduction)',
-  'Modified Quantity per Box',
-  'Supplier Revised Shortage (Short Shipment)',
-  'Non-Standard Packaging (Expendable)',
+// Toyota-specific exception types for Shipment Load
+// Author: Hassan, 2025-12-22
+// F-GAP-002 FIX: Replaced Skid Build exception types with correct Shipment Load types
+// Reference: Toyota Spec Page 24 (Trailer Level) and Page 26 (Skid Level)
+
+// TRAILER LEVEL EXCEPTIONS (Toyota Spec Page 24)
+const TRAILER_EXCEPTION_TYPES = [
+  { label: 'Blowout - Space / Weight', code: '13' },
+  { label: 'Freight Pulled Ahead Already', code: '16' },
+  { label: 'Freight Damage', code: '17' },
+  { label: 'Supplier Revised Shortage (Short Shipment)', code: '24' },
+  { label: 'Toyota Instructed Delay', code: '25' },
+  { label: 'Others', code: '27' },
+  { label: 'Unplanned Expedite', code: '99' }, // Special rules apply!
+];
+
+// SKID LEVEL EXCEPTIONS (Toyota Spec Page 26)
+const SKID_EXCEPTION_TYPES = [
+  { label: 'Blowout Recovery - Normal Route', code: '14' },
+  { label: 'Buildout Recovery - Normal Route', code: '15' },
+  { label: 'Expedite – Supplement', code: '18' },
+  { label: 'Expedite – Blowout', code: '19' },
+  { label: 'Continuous Load', code: '21' },
+  { label: 'Expedite - Buildout', code: '22' },
+  { label: 'Freight Pull Ahead (At Pallet Level)', code: '23' },
 ];
 
 // Data interfaces
@@ -132,9 +152,11 @@ interface ScannedSkid {
 
 interface Exception {
   type: string;
+  code: string; // Exception code (13-27, 99 for trailer; 14-23 for skid)
   comments: string;
-  relatedSkidId: string; // Which planned skid this exception is for
+  relatedSkidId: string | null; // null for trailer-level, SkidNumber-PalletizationCode for skid-level
   timestamp: string;
+  level: 'trailer' | 'skid'; // F-GAP-002: Differentiate trailer vs skid level exceptions
 }
 
 export default function ShipmentLoadV2Page() {
@@ -171,11 +193,14 @@ export default function ShipmentLoadV2Page() {
 
   // Exceptions Data (Screen 3)
   // Author: Hassan, 2025-11-05
+  // Updated: 2025-12-22 - F-GAP-002: Added exception level state
   const [exceptions, setExceptions] = useState<Exception[]>([]);
   const [showExceptionModal, setShowExceptionModal] = useState(false);
   const [selectedExceptionType, setSelectedExceptionType] = useState('');
+  const [selectedExceptionCode, setSelectedExceptionCode] = useState('');
   const [exceptionComments, setExceptionComments] = useState('');
   const [selectedSkidForException, setSelectedSkidForException] = useState('');
+  const [exceptionLevel, setExceptionLevel] = useState<'trailer' | 'skid'>('trailer'); // F-GAP-002: Track exception level
 
   // FAB Menu State
   // Author: Hassan, 2025-11-05
@@ -351,7 +376,7 @@ export default function ShipmentLoadV2Page() {
       );
 
       if (!validateResponse.success || !validateResponse.data) {
-        setError(validateResponse.error || 'Order not found or skid-build not complete.');
+        setError(validateResponse.message || 'Order not found or skid-build not complete.');
         setLoading(false);
         return;
       }
@@ -388,6 +413,7 @@ export default function ShipmentLoadV2Page() {
    * Updated: 2025-12-17 - Use session/start API with orderNumber and dockCode
    * Updated: 2025-12-17 - Fixed to use actual authenticated user instead of hardcoded ID
    * Updated: 2025-12-17 - Integrated getOrderSkids to fetch actual skids from tblSkidScans
+   * Updated: 2025-12-22 - Auto-populate trailer data when session is resumed
    */
   const handlePickupRouteContinue = async () => {
     if (!pickupRouteData) {
@@ -416,7 +442,7 @@ export default function ShipmentLoadV2Page() {
       });
 
       if (!sessionResponse.success || !sessionResponse.data) {
-        setError(sessionResponse.error || 'Failed to start session');
+        setError(sessionResponse.message || 'Failed to start session');
         setLoading(false);
         return;
       }
@@ -427,13 +453,41 @@ export default function ShipmentLoadV2Page() {
       setSessionId(sessionData.sessionId);
       setActualSkidCount(sessionData.scannedOrderSkidCount || 0);
 
+      // If session was resumed, populate trailer data from session
+      if (sessionData.isResumed) {
+        setTrailerData({
+          trailerNumber: sessionData.trailerNumber || '',
+          driverFirstName: sessionData.driverFirstName || '',
+          driverLastName: sessionData.driverLastName || '',
+          sealNumber: sessionData.sealNumber || '',
+          supplierFirstName: sessionData.supplierFirstName || '',
+          supplierLastName: sessionData.supplierLastName || '',
+        });
+        console.log('Session resumed - trailer data restored:', {
+          trailerNumber: sessionData.trailerNumber,
+          driverFirstName: sessionData.driverFirstName,
+          driverLastName: sessionData.driverLastName,
+        });
+      }
+
       console.log('Session started successfully!');
       console.log('Session ID:', sessionData.sessionId);
+      console.log('Is Resumed:', sessionData.isResumed);
       console.log('Orders from session:', sessionData.orders?.length || 0);
       console.log('Orders:', sessionData.orders?.map(o => `${o.orderNumber}-${o.dockCode}`).join(', '));
 
       // Fetch skids for ALL orders in the session (not just the scanned one)
       const allPlannedSkids: PlannedSkid[] = [];
+      const allScannedSkids: ScannedSkid[] = [];
+
+      // Build a map of which orders are already scanned
+      const scannedOrdersMap = new Map<string, boolean>();
+      if (sessionData.orders) {
+        sessionData.orders.forEach(order => {
+          const key = `${order.orderNumber}-${order.dockCode}`;
+          scannedOrdersMap.set(key, order.isScanned || false);
+        });
+      }
 
       // Get all unique orders from session (or use scanned order if no orders returned)
       const ordersToFetch = sessionData.orders && sessionData.orders.length > 0
@@ -441,6 +495,7 @@ export default function ShipmentLoadV2Page() {
         : [{ orderNumber: pickupRouteData.orderNumber, dockCode: pickupRouteData.dockCode }];
 
       console.log('Fetching skids for orders:', ordersToFetch.map(o => `${o.orderNumber}-${o.dockCode}`).join(', '));
+      console.log('Scanned orders map:', Object.fromEntries(scannedOrdersMap));
 
       // Fetch skids for each order
       for (const orderInfo of ordersToFetch) {
@@ -449,36 +504,57 @@ export default function ShipmentLoadV2Page() {
 
           if (skidsResponse.success && skidsResponse.data) {
             const skidsData: OrderSkidsResponse = skidsResponse.data;
-            const orderSkids: PlannedSkid[] = skidsData.skids.map((skid: SkidDto) => ({
-              skidId: skid.skidId,
-              skidNumber: skid.skidNumber,
-              skidSide: skid.skidSide,
-              palletizationCode: skid.palletizationCode,
-              scannedAt: skid.scannedAt,
-              orderNumber: skidsData.orderNumber,
-              dockCode: skidsData.dockCode,
-              isScanned: false,
-            }));
-            allPlannedSkids.push(...orderSkids);
-            console.log(`Loaded ${orderSkids.length} skids for order ${orderInfo.orderNumber}-${orderInfo.dockCode}`);
+            const orderKey = `${orderInfo.orderNumber}-${orderInfo.dockCode}`;
+            const isOrderScanned = scannedOrdersMap.get(orderKey) || false;
+
+            skidsData.skids.forEach((skid: SkidDto) => {
+              if (isOrderScanned) {
+                // Order was already scanned - add to scannedSkids
+                allScannedSkids.push({
+                  id: skid.skidId,
+                  skidId: skid.skidNumber,
+                  manifestNo: 0, // Not available from skid data
+                  palletizationCode: skid.palletizationCode || '',
+                  mros: '',
+                  orderNumber: skidsData.orderNumber,
+                  dockCode: skidsData.dockCode,
+                  timestamp: skid.scannedAt || new Date().toISOString(),
+                });
+              } else {
+                // Order not scanned yet - add to plannedSkids
+                allPlannedSkids.push({
+                  skidId: skid.skidId,
+                  skidNumber: skid.skidNumber,
+                  skidSide: skid.skidSide,
+                  palletizationCode: skid.palletizationCode,
+                  scannedAt: skid.scannedAt,
+                  orderNumber: skidsData.orderNumber,
+                  dockCode: skidsData.dockCode,
+                  isScanned: false,
+                });
+              }
+            });
+
+            console.log(`Loaded skids for order ${orderInfo.orderNumber}-${orderInfo.dockCode}: isScanned=${isOrderScanned}, count=${skidsData.skids.length}`);
           } else {
-            console.warn(`Failed to fetch skids for order ${orderInfo.orderNumber}-${orderInfo.dockCode}:`, skidsResponse.error);
+            console.warn(`Failed to fetch skids for order ${orderInfo.orderNumber}-${orderInfo.dockCode}:`, skidsResponse.message);
           }
         } catch (err) {
           console.error(`Error fetching skids for order ${orderInfo.orderNumber}-${orderInfo.dockCode}:`, err);
         }
       }
 
-      if (allPlannedSkids.length === 0) {
+      if (allPlannedSkids.length === 0 && allScannedSkids.length === 0) {
         setError('No skids found for any orders in this route');
         setLoading(false);
         return;
       }
 
-      console.log('Total skids loaded from all orders:', allPlannedSkids.length);
-      console.log('Planned skids:', allPlannedSkids);
+      console.log('Total planned skids:', allPlannedSkids.length);
+      console.log('Total scanned skids:', allScannedSkids.length);
 
       setPlannedSkids(allPlannedSkids);
+      setScannedSkids(allScannedSkids);
       setCurrentScreen(2);
       setError(null);
     } catch (err) {
@@ -537,7 +613,7 @@ export default function ShipmentLoadV2Page() {
       });
 
       if (!response.success) {
-        setError(response.error || 'Failed to save trailer information');
+        setError(response.message || 'Failed to save trailer information');
         setLoading(false);
         return;
       }
@@ -705,7 +781,7 @@ export default function ShipmentLoadV2Page() {
       console.log('======================');
 
       if (!response.success || !response.data) {
-        setError(response.error || 'Failed to validate skid');
+        setError(response.message || 'Failed to validate skid');
         setLoading(false);
         return;
       }
@@ -790,28 +866,34 @@ export default function ShipmentLoadV2Page() {
    * Updated: 2025-12-17 - Use composite key (SkidNumber-PalletizationCode) for relatedSkidId
    */
   const handleAddException = () => {
-    if (!selectedExceptionType || !exceptionComments.trim()) {
+    // F-GAP-002: Updated validation for trailer/skid level exceptions
+    if (!selectedExceptionType || !selectedExceptionCode || !exceptionComments.trim()) {
       setError('Please select exception type and add comments');
       return;
     }
 
-    if (!selectedSkidForException) {
+    // For skid-level exceptions, require skid selection
+    if (exceptionLevel === 'skid' && !selectedSkidForException) {
       setError('Please select which skid this exception is for');
       return;
     }
 
     const newException: Exception = {
       type: selectedExceptionType,
+      code: selectedExceptionCode,
       comments: exceptionComments.trim(),
-      relatedSkidId: selectedSkidForException, // Now contains "SkidNumber-PalletizationCode" (e.g., "001-A4")
+      relatedSkidId: exceptionLevel === 'trailer' ? null : selectedSkidForException, // null for trailer, SkidNumber-PalletizationCode for skid
       timestamp: new Date().toISOString(),
+      level: exceptionLevel,
     };
 
     console.log('Adding exception:', newException);
     setExceptions([...exceptions, newException]);
     setSelectedExceptionType('');
+    setSelectedExceptionCode('');
     setExceptionComments('');
     setSelectedSkidForException('');
+    setExceptionLevel('trailer'); // Reset to default
     setShowExceptionModal(false);
     setError(null);
   };
@@ -876,6 +958,47 @@ export default function ShipmentLoadV2Page() {
     console.log('Scanned Skids:', scannedSkids);
     console.log('Exceptions:', exceptions);
 
+    // F-GAP-004: Code 99 (Unplanned Expedite) Special Validation
+    // Toyota Spec Page 25: Three conditions must be present when code 99 is used
+    const hasCode99TrailerException = exceptions.some(
+      e => e.code === '99' && e.level === 'trailer'
+    );
+
+    if (hasCode99TrailerException) {
+      console.log('=== CODE 99 VALIDATION ===');
+
+      // Condition 1: Route must have "EX-" prefix
+      if (!pickupRouteData?.routeNumber.startsWith('EX-')) {
+        setError('Code 99 (Unplanned Expedite) requires route to start with "EX-" prefix. Current route: ' + pickupRouteData?.routeNumber);
+        return;
+      }
+      console.log('✓ Route has EX- prefix');
+
+      // Condition 3: Every scanned skid must have a skid-level exception
+      const skidIdsWithExceptions = new Set(
+        exceptions
+          .filter(e => e.level === 'skid' && e.relatedSkidId)
+          .map(e => e.relatedSkidId)
+      );
+
+      // Check all scanned skids have exceptions
+      const scannedSkidKeys = scannedSkids.map(s => {
+        const skidNumber = s.skidId.substring(0, 3);
+        return `${skidNumber}-${s.palletizationCode}`;
+      });
+
+      const skidsWithoutExceptions = scannedSkidKeys.filter(
+        key => !skidIdsWithExceptions.has(key)
+      );
+
+      if (skidsWithoutExceptions.length > 0) {
+        setError(`Code 99 (Unplanned Expedite) requires ALL skids to have exceptions. Missing exceptions for: ${skidsWithoutExceptions.join(', ')}`);
+        return;
+      }
+      console.log('✓ All skids have exceptions');
+      console.log('======================');
+    }
+
     // Check if all planned items are loaded
     const areAllItemsLoaded = plannedSkids.every(skid => skid.isScanned);
     console.log('All items loaded:', areAllItemsLoaded);
@@ -932,7 +1055,7 @@ export default function ShipmentLoadV2Page() {
       });
 
       if (!response.success || !response.data) {
-        setError(response.error || 'Failed to complete shipment');
+        setError(response.message || 'Failed to complete shipment');
         setLoading(false);
         return;
       }
@@ -1038,7 +1161,7 @@ export default function ShipmentLoadV2Page() {
 
           {/* SCREEN 1: Scan Pickup Route QR */}
           {currentScreen === 1 && (
-            <Card style={{ backgroundColor: '#FCFCFC' }}>
+            <Card className="bg-[#FCFCFC]">
               <CardContent className="p-3 space-y-3">
                 {/* Header with Icon */}
                 <div className="flex items-center gap-3 pb-2 border-b border-gray-200">
@@ -1147,7 +1270,8 @@ export default function ShipmentLoadV2Page() {
                     type="text"
                     value={trailerData.trailerNumber}
                     onChange={(e) => setTrailerData({ ...trailerData, trailerNumber: e.target.value })}
-                    placeholder="Enter trailer number"
+                    placeholder="Enter trailer number (max 20 chars)"
+                    maxLength={20}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     style={{ backgroundColor: '#FCFCFC' }}
                   />
@@ -1162,7 +1286,8 @@ export default function ShipmentLoadV2Page() {
                     type="text"
                     value={trailerData.driverFirstName}
                     onChange={(e) => setTrailerData({ ...trailerData, driverFirstName: e.target.value })}
-                    placeholder="Enter driver first name"
+                    placeholder="Enter driver first name (max 9 chars)"
+                    maxLength={9}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     style={{ backgroundColor: '#FCFCFC' }}
                   />
@@ -1177,7 +1302,8 @@ export default function ShipmentLoadV2Page() {
                     type="text"
                     value={trailerData.driverLastName}
                     onChange={(e) => setTrailerData({ ...trailerData, driverLastName: e.target.value })}
-                    placeholder="Enter driver last name"
+                    placeholder="Enter driver last name (max 12 chars)"
+                    maxLength={12}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     style={{ backgroundColor: '#FCFCFC' }}
                   />
@@ -1192,7 +1318,8 @@ export default function ShipmentLoadV2Page() {
                     type="text"
                     value={trailerData.sealNumber}
                     onChange={(e) => setTrailerData({ ...trailerData, sealNumber: e.target.value })}
-                    placeholder="Enter seal number (optional)"
+                    placeholder="Enter seal number (max 20 chars, optional)"
+                    maxLength={20}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     style={{ backgroundColor: '#FCFCFC' }}
                   />
@@ -1207,7 +1334,8 @@ export default function ShipmentLoadV2Page() {
                     type="text"
                     value={trailerData.supplierFirstName}
                     onChange={(e) => setTrailerData({ ...trailerData, supplierFirstName: e.target.value })}
-                    placeholder="Enter shipping TM first name (optional)"
+                    placeholder="Enter shipping TM first name (max 9 chars, optional)"
+                    maxLength={9}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     style={{ backgroundColor: '#FCFCFC' }}
                   />
@@ -1222,7 +1350,8 @@ export default function ShipmentLoadV2Page() {
                     type="text"
                     value={trailerData.supplierLastName}
                     onChange={(e) => setTrailerData({ ...trailerData, supplierLastName: e.target.value })}
-                    placeholder="Enter shipping TM last name (optional)"
+                    placeholder="Enter shipping TM last name (max 12 chars, optional)"
+                    maxLength={12}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     style={{ backgroundColor: '#FCFCFC' }}
                   />
@@ -1558,14 +1687,21 @@ export default function ShipmentLoadV2Page() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <Badge variant="warning">{exception.type}</Badge>
+                                <Badge variant="warning">
+                                  {exception.level === 'trailer' ? 'Trailer' : 'Skid'} - Code {exception.code}
+                                </Badge>
                                 <span className="text-xs text-gray-500">
                                   {new Date(exception.timestamp).toLocaleString()}
                                 </span>
                               </div>
                               <p className="text-xs text-gray-600 mb-1">
-                                <span className="font-semibold">Skid:</span> {exception.relatedSkidId}
+                                <span className="font-semibold">Type:</span> {exception.type}
                               </p>
+                              {exception.level === 'skid' && exception.relatedSkidId && (
+                                <p className="text-xs text-gray-600 mb-1">
+                                  <span className="font-semibold">Skid:</span> {exception.relatedSkidId}
+                                </p>
+                              )}
                               <p className="text-sm text-gray-700">{exception.comments}</p>
                             </div>
                             <button
@@ -1792,7 +1928,7 @@ export default function ShipmentLoadV2Page() {
                   <span className="text-sm font-medium text-gray-700">Rack Exception</span>
                 </div>
                 {currentScreen === 3 && (
-                  <Badge variant={rackExceptionEnabled ? 'success' : 'secondary'}>
+                  <Badge variant={rackExceptionEnabled ? 'success' : 'default'}>
                     {rackExceptionEnabled ? 'ON' : 'OFF'}
                   </Badge>
                 )}
@@ -1809,8 +1945,10 @@ export default function ShipmentLoadV2Page() {
           onClick={() => {
             setShowExceptionModal(false);
             setSelectedExceptionType('');
+            setSelectedExceptionCode('');
             setExceptionComments('');
             setSelectedSkidForException('');
+            setExceptionLevel('trailer');
           }}
         >
           <div
@@ -1826,8 +1964,10 @@ export default function ShipmentLoadV2Page() {
                 onClick={() => {
                   setShowExceptionModal(false);
                   setSelectedExceptionType('');
+                  setSelectedExceptionCode('');
                   setExceptionComments('');
                   setSelectedSkidForException('');
+                  setExceptionLevel('trailer');
                 }}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
                 aria-label="Close modal"
@@ -1838,6 +1978,46 @@ export default function ShipmentLoadV2Page() {
 
             {/* Modal Content */}
             <div className="p-6 space-y-4">
+              {/* Exception Level Selection */}
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#253262' }}>
+                  Exception Level *
+                </label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="exceptionLevel"
+                      value="trailer"
+                      checked={exceptionLevel === 'trailer'}
+                      onChange={(e) => {
+                        setExceptionLevel('trailer');
+                        setSelectedExceptionType('');
+                        setSelectedExceptionCode('');
+                        setSelectedSkidForException('');
+                      }}
+                      className="w-4 h-4 text-primary-600"
+                    />
+                    <span className="text-sm">Trailer Level</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="exceptionLevel"
+                      value="skid"
+                      checked={exceptionLevel === 'skid'}
+                      onChange={(e) => {
+                        setExceptionLevel('skid');
+                        setSelectedExceptionType('');
+                        setSelectedExceptionCode('');
+                      }}
+                      className="w-4 h-4 text-primary-600"
+                    />
+                    <span className="text-sm">Skid Level</span>
+                  </label>
+                </div>
+              </div>
+
               {/* Exception Type Dropdown */}
               <div>
                 <label className="block text-sm font-medium mb-2" style={{ color: '#253262' }}>
@@ -1845,40 +2025,49 @@ export default function ShipmentLoadV2Page() {
                 </label>
                 <select
                   value={selectedExceptionType}
-                  onChange={(e) => setSelectedExceptionType(e.target.value)}
+                  onChange={(e) => {
+                    const selected = e.target.value;
+                    setSelectedExceptionType(selected);
+                    // Find and set the exception code
+                    const exceptionList = exceptionLevel === 'trailer' ? TRAILER_EXCEPTION_TYPES : SKID_EXCEPTION_TYPES;
+                    const found = exceptionList.find(ex => ex.label === selected);
+                    setSelectedExceptionCode(found?.code || '');
+                  }}
                   className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
                   style={{ backgroundColor: '#FCFCFC' }}
                 >
                   <option value="">Select exception type...</option>
-                  {EXCEPTION_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
+                  {(exceptionLevel === 'trailer' ? TRAILER_EXCEPTION_TYPES : SKID_EXCEPTION_TYPES).map((ex) => (
+                    <option key={ex.code} value={ex.label}>
+                      {ex.label} (Code: {ex.code})
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Which Skid Dropdown - Show unscanned planned items only */}
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#253262' }}>
-                  Which Skid? *
-                </label>
-                <select
-                  value={selectedSkidForException}
-                  onChange={(e) => setSelectedSkidForException(e.target.value)}
-                  className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-                  style={{ backgroundColor: '#FCFCFC' }}
-                >
-                  <option value="">Select unscanned skid...</option>
-                  {plannedSkids
-                    .filter(skid => !skid.isScanned)
-                    .map((skid) => (
-                      <option key={`${skid.skidNumber}-${skid.palletizationCode}`} value={`${skid.skidNumber}-${skid.palletizationCode}`}>
-                        Skid {skid.skidId} (Dock: {skid.palletizationCode || 'N/A'}) - Order {skid.orderNumber}
-                      </option>
-                    ))}
-                </select>
-              </div>
+              {/* Which Skid Dropdown - ONLY for Skid Level Exceptions */}
+              {exceptionLevel === 'skid' && (
+                <div>
+                  <label className="block text-sm font-medium mb-2" style={{ color: '#253262' }}>
+                    Which Skid? *
+                  </label>
+                  <select
+                    value={selectedSkidForException}
+                    onChange={(e) => setSelectedSkidForException(e.target.value)}
+                    className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                    style={{ backgroundColor: '#FCFCFC' }}
+                  >
+                    <option value="">Select unscanned skid...</option>
+                    {plannedSkids
+                      .filter(skid => !skid.isScanned)
+                      .map((skid) => (
+                        <option key={`${skid.skidNumber}-${skid.palletizationCode}`} value={`${skid.skidNumber}-${skid.palletizationCode}`}>
+                          Skid {skid.skidId} (Pallet: {skid.palletizationCode || 'N/A'}) - Order {skid.orderNumber}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
               {/* Comments Textarea */}
               <div>
@@ -1908,8 +2097,10 @@ export default function ShipmentLoadV2Page() {
                 onClick={() => {
                   setShowExceptionModal(false);
                   setSelectedExceptionType('');
+                  setSelectedExceptionCode('');
                   setExceptionComments('');
                   setSelectedSkidForException('');
+                  setExceptionLevel('trailer');
                 }}
                 variant="secondary"
                 fullWidth
@@ -1921,7 +2112,12 @@ export default function ShipmentLoadV2Page() {
                 onClick={handleAddException}
                 variant="warning"
                 fullWidth
-                disabled={!selectedExceptionType || !exceptionComments.trim() || !selectedSkidForException}
+                disabled={
+                  !selectedExceptionType ||
+                  !selectedExceptionCode ||
+                  !exceptionComments.trim() ||
+                  (exceptionLevel === 'skid' && !selectedSkidForException)
+                }
               >
                 <i className="fa-light fa-plus mr-2"></i>
                 Add Exception

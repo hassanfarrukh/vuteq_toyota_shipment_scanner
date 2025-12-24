@@ -137,6 +137,7 @@ const EXCEPTION_TYPES = [
   'Modified Quantity per Box',
   'Supplier Revised Shortage (Short Shipment)',
   'Non-Standard Packaging (Expendable)',
+  'Others', // Code 26 - F-GAP-001 fix
 ];
 
 // ===========================
@@ -1208,6 +1209,7 @@ export default function SkidBuildV2Page() {
       'Modified Quantity per Box': '11',
       'Supplier Revised Shortage (Short Shipment)': '12',
       'Non-Standard Packaging (Expendable)': '20',
+      'Others': '26', // F-GAP-001 fix
     };
 
     const exceptionCode = exceptionCodeMap[selectedExceptionType];
@@ -1234,7 +1236,7 @@ export default function SkidBuildV2Page() {
       );
 
       if (!response.success || !response.data) {
-        setError(response.error || 'Failed to add exception');
+        setError(response.message || 'Failed to add exception');
         setLoading(false);
         return;
       }
@@ -1283,7 +1285,7 @@ export default function SkidBuildV2Page() {
       const response = await deleteSkidBuildException(exception.id);
 
       if (!response.success) {
-        setError(response.error || 'Failed to delete exception');
+        setError(response.message || 'Failed to delete exception');
         setLoading(false);
         return;
       }

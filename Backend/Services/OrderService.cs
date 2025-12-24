@@ -55,7 +55,9 @@ public class OrderService : IOrderService
                 DepartureDate = o.PlannedPickup, // Fixed 2025-12-09 - Use PlannedPickup as DepartureDate
                 OrderDate = o.TransmitDate,
                 Status = o.Status.ToString(),
-                UploadId = o.UploadId
+                UploadId = o.UploadId,
+                PlannedRoute = o.PlannedRoute,
+                MainRoute = o.MainRoute
             }).ToList();
 
             var message = uploadId.HasValue

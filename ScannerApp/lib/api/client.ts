@@ -173,14 +173,14 @@ export function getErrorMessage(error: unknown): string {
     if (axiosError.response?.data) {
       const data = axiosError.response.data;
 
-      // Handle ApiResponse format
-      if (data.message) {
-        return data.message;
+      // Handle errors array FIRST - it contains detailed error messages
+      if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+        return data.errors.join(' ');
       }
 
-      // Handle errors array
-      if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
-        return data.errors.join(', ');
+      // Handle ApiResponse format - message is the short summary
+      if (data.message) {
+        return data.message;
       }
 
       // Handle string error

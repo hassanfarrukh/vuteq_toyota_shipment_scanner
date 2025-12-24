@@ -256,9 +256,11 @@ export interface ComplianceIssue {
 // ===== API TYPES =====
 export interface ApiResponse<T> {
   success: boolean;
-  message: string;
-  data: T;
-  errors: string[];
+  message?: string;
+  data: T | null;
+  errors?: string[];
+  error?: string | null;
+  timestamp?: string;
 }
 
 export interface ApiError {

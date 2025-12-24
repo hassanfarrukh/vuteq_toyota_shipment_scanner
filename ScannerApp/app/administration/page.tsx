@@ -157,12 +157,6 @@ export default function AdministrationPage() {
   const { user } = useAuth();
   const { refreshLocation } = useLocation();
 
-  // Redirect if not admin
-  if (user && user.role !== 'ADMIN') {
-    router.push('/');
-    return null;
-  }
-
   const [activeTab, setActiveTab] = useState<Tab>('office');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -281,6 +275,12 @@ export default function AdministrationPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  // Redirect if not admin - moved after all hooks to comply with React Rules of Hooks
+  if (user && user.role !== 'ADMIN') {
+    router.push('/');
+    return null;
+  }
 
   // Fetch offices from API
   const fetchOffices = async () => {
@@ -3225,7 +3225,7 @@ export default function AdministrationPage() {
               placeholder="Leave blank to keep current secret"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Leave blank if you don't want to update the secret
+              Leave blank if you don&apos;t want to update the secret
             </p>
           </div>
 

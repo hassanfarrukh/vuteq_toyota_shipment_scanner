@@ -11,7 +11,6 @@ import apiClient, { getErrorMessage } from './api/client';
 import type {
   ApiResponse,
   Order,
-  SkidBuildSession,
   DriverCheckSheet,
   ShipmentLoad,
   DockStatus,
@@ -581,6 +580,8 @@ export interface SkidBuildCompleteResponse {
   sessionId: string;
   totalScanned: number;
   totalExceptions: number;
+  toyotaConfirmationNumber?: string;
+  toyotaError?: string;
 }
 
 // Get order by number and dock code
@@ -904,6 +905,8 @@ export interface SkidBuildOrderGrouped {
   plantCode: string;
   status: string;
   skids: SkidGroupDto[];
+  toyotaSkidBuildConfirmationNumber?: string;
+  toyotaSkidBuildErrorMessage?: string;
 }
 
 export async function getSkidBuildOrderGrouped(
@@ -963,6 +966,7 @@ export interface PlannedOrder {
   skidCount: number;
   scannedCount: number;
   plannedItems: PlannedOrderItem[];
+  isScanned?: boolean;  // Indicates if order was scanned in current session
 }
 
 export interface PlannedOrderItem {
@@ -1149,6 +1153,13 @@ export interface StartSessionResponse {
   orders: PlannedOrder[];
   isResumed: boolean;
   scannedOrderSkidCount?: number;  // NEW - Actual skid count for the scanned order
+  // Trailer data fields (populated when session is resumed)
+  trailerNumber?: string;
+  sealNumber?: string;
+  driverFirstName?: string;
+  driverLastName?: string;
+  supplierFirstName?: string;
+  supplierLastName?: string;
 }
 
 export interface UpdateSessionRequest {
@@ -1250,10 +1261,19 @@ export async function startShipmentLoadSession(
       };
     }
 
+    // Build error message including details from errors array
+    let errorMessage = result.message || 'Failed to start session';
+    if (result.errors && result.errors.length > 0) {
+      // Use errors array which contains detailed info like order numbers
+      errorMessage = result.errors.join(' ');
+    }
+
+    console.log('[startShipmentLoadSession] Error response:', { message: result.message, errors: result.errors, errorMessage });
+
     return {
       success: false,
       data: null,
-      error: result.message || 'Failed to start session',
+      error: errorMessage,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {

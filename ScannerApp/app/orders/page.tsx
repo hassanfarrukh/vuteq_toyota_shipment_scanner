@@ -93,6 +93,8 @@ interface Order {
   status: string;
   uploadId: string;
   uploadFileName?: string;
+  plannedRoute?: string;
+  mainRoute?: string;
 }
 
 interface PlannedItem {
@@ -118,7 +120,7 @@ type TabType = 'imported-files' | 'planned-orders' | 'planned-parts';
 
 // Sort types for each table
 type FilesSortColumn = 'fileName' | 'uploadDate' | 'fileSize' | 'ordersCreated' | 'status';
-type OrdersSortColumn = 'realOrderNumber' | 'totalParts' | 'dockCode' | 'departureDate' | 'orderDate' | 'status';
+type OrdersSortColumn = 'realOrderNumber' | 'totalParts' | 'dockCode' | 'departureDate' | 'orderDate' | 'status' | 'mainRoute' | 'plannedRoute';
 type PartsSortColumn = 'realOrderNumber' | 'partNumber' | 'kanbanNumber' | 'internalKanban' | 'qpc' | 'totalBoxPlanned' | 'manifestNo' | 'palletizationCode' | 'shortOver';
 type SortDirection = 'asc' | 'desc';
 
@@ -126,12 +128,6 @@ export default function OrdersPage() {
   const router = useRouter();
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Redirect if not supervisor or admin
-  if (user && user.role !== 'SUPERVISOR' && user.role !== 'ADMIN') {
-    router.push('/');
-    return null;
-  }
 
   // State
   const [activeTab, setActiveTab] = useState<TabType>('planned-orders');
@@ -219,6 +215,8 @@ export default function OrdersPage() {
           status: order.status,
           uploadId: order.uploadId,
           uploadFileName: order.uploadFileName,
+          plannedRoute: order.plannedRoute,
+          mainRoute: order.mainRoute,
         }));
         setOrders(fetchedOrders);
       }
@@ -642,6 +640,12 @@ export default function OrdersPage() {
     setOrdersPage(1);
     setPartsPage(1);
   }, [searchQuery]);
+
+  // Redirect if not supervisor or admin (after all hooks)
+  if (user && user.role !== 'SUPERVISOR' && user.role !== 'ADMIN') {
+    router.push('/');
+    return null;
+  }
 
   // Pagination helper function
   const paginateData = <T,>(data: T[], page: number, perPage: number): T[] => {
@@ -1237,6 +1241,22 @@ export default function OrdersPage() {
                                 </th>
                                 <th
                                   className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleOrdersSort('mainRoute')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Main Route{getSortIcon(ordersSortColumn === 'mainRoute', ordersSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleOrdersSort('plannedRoute')}
+                                >
+                                  <div className="flex items-center justify-center">
+                                    Planned Route{getSortIcon(ordersSortColumn === 'plannedRoute', ordersSortDirection)}
+                                  </div>
+                                </th>
+                                <th
+                                  className="px-4 py-3 font-semibold text-gray-700 text-center whitespace-nowrap cursor-pointer hover:bg-gray-100 transition-colors"
                                   onClick={() => handleOrdersSort('departureDate')}
                                 >
                                   <div className="flex items-center justify-center">
@@ -1278,6 +1298,12 @@ export default function OrdersPage() {
                                     {order.dockCode}
                                   </td>
                                   <td className="px-4 py-3 text-gray-700 text-center whitespace-nowrap">
+                                    {order.mainRoute || <span className="text-gray-400">-</span>}
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-700 text-center whitespace-nowrap">
+                                    {order.plannedRoute || <span className="text-gray-400">-</span>}
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-700 text-center whitespace-nowrap">
                                     {formatDate(order.departureDate)}
                                   </td>
                                   <td className="px-4 py-3 text-gray-700 text-center whitespace-nowrap">
@@ -1285,12 +1311,22 @@ export default function OrdersPage() {
                                   </td>
                                   <td className="px-4 py-3 text-gray-700 text-center whitespace-nowrap">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                      order.status === 'Completed'
-                                        ? 'bg-success-100 text-success-800'
-                                        : order.status === 'In Progress'
+                                      order.status === 'Planned'
+                                        ? 'bg-gray-100 text-gray-800'
+                                        : order.status === 'SkidBuilding'
                                         ? 'bg-blue-100 text-blue-800'
-                                        : order.status === 'Pending'
-                                        ? 'bg-yellow-100 text-yellow-800'
+                                        : order.status === 'SkidBuilt'
+                                        ? 'bg-cyan-100 text-cyan-800'
+                                        : order.status === 'ReadyToShip'
+                                        ? 'bg-purple-100 text-purple-800'
+                                        : order.status === 'ShipmentLoading'
+                                        ? 'bg-orange-100 text-orange-800'
+                                        : order.status === 'Shipped'
+                                        ? 'bg-green-100 text-green-800'
+                                        : order.status === 'SkidBuildError'
+                                        ? 'bg-red-100 text-red-800'
+                                        : order.status === 'ShipmentError'
+                                        ? 'bg-red-100 text-red-800'
                                         : 'bg-gray-100 text-gray-800'
                                     }`}>
                                       {order.status}

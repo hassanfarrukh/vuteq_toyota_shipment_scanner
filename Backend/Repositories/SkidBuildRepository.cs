@@ -20,6 +20,9 @@ public interface ISkidBuildRepository
     Task<Order?> GetOrderByIdAsync(Guid orderId);
     Task UpdateOrderAsync(Order order);
 
+    // PlannedItem operations
+    Task<PlannedItem?> GetPlannedItemByIdAsync(Guid plannedItemId);
+
     // Session operations
     Task<SkidBuildSession> CreateSessionAsync(SkidBuildSession session);
     Task<SkidBuildSession?> GetSessionByIdAsync(Guid sessionId);
@@ -89,6 +92,23 @@ public class SkidBuildRepository : ISkidBuildRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving order by ID: {OrderId}", orderId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get PlannedItem by ID (for palletization validation - GAP-015)
+    /// </summary>
+    public async Task<PlannedItem?> GetPlannedItemByIdAsync(Guid plannedItemId)
+    {
+        try
+        {
+            return await _context.PlannedItems
+                .FirstOrDefaultAsync(pi => pi.PlannedItemId == plannedItemId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving planned item by ID: {PlannedItemId}", plannedItemId);
             throw;
         }
     }

@@ -51,12 +51,6 @@ export default function DownloadScannedDataPage() {
   const router = useRouter();
   const { user } = useAuth();
 
-  // Redirect if not supervisor or admin
-  if (user && user.role !== 'SUPERVISOR' && user.role !== 'ADMIN') {
-    router.push('/');
-    return null;
-  }
-
   // State for filters
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -65,6 +59,12 @@ export default function DownloadScannedDataPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Redirect if not supervisor or admin - moved after all hooks to comply with React Rules of Hooks
+  if (user && user.role !== 'SUPERVISOR' && user.role !== 'ADMIN') {
+    router.push('/');
+    return null;
+  }
 
   const handleDownload = async () => {
     setError(null);
@@ -151,7 +151,7 @@ export default function DownloadScannedDataPage() {
         )}
 
         {/* Filters Card */}
-        <Card style={{ backgroundColor: '#FCFCFC' }}>
+        <Card className="bg-[#FCFCFC]">
           <CardContent className="p-3 space-y-4">
             {/* Header with Icon */}
             <div className="flex items-center gap-3 pb-3 border-b border-gray-200">

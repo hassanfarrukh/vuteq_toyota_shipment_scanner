@@ -165,7 +165,9 @@ public class OrderUploadController : ControllerBase
     ///       "departureDate": "2025-11-18T08:30:00Z",
     ///       "orderDate": "2025-11-17T10:00:00Z",
     ///       "status": "Planned",
-    ///       "uploadId": "550e8400-e29b-41d4-a716-446655440000"
+    ///       "uploadId": "550e8400-e29b-41d4-a716-446655440000",
+    ///       "plannedRoute": "IDRE-06",
+    ///       "mainRoute": "IEH6-33"
     ///     }
     ///   ]
     /// }
