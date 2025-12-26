@@ -29,3 +29,8 @@ export type { InternalKanbanSettings, DockMonitorSettings } from './settings';
 // Export order uploads API
 export * as orderUploadsApi from './orderUploads';
 export type { OrderUploadResponseDto, ExtractedOrderDto, ExtractedOrderItemDto } from './orderUploads';
+
+// Export dock monitor API
+export * as dockMonitorApi from './dock-monitor';
+export type { DockMonitorOrder, DockMonitorShipment, DockMonitorResponse } from './dock-monitor';
+export type { DockMonitorSettings as DockMonitorDataSettings } from './dock-monitor';

@@ -14,9 +14,9 @@
  * Updated: 2025-10-29 - REVERTED: Removed "Refresh Now" button, "Update Status" action buttons, and "Actions" column (Hassan)
  * Updated: 2025-10-29 - Fixed "Back to Dashboard" button to use standardized primary style with fa-light fa-home icon (Hassan)
  * Updated: 2025-10-30 - Added datetime display format (date + time) and table sorting functionality (Hassan)
+ * Updated: 2025-12-24 - Integrated with real backend API (Hassan)
  * Real-time dock status monitoring with 5-minute auto-refresh
  * Displays 10 columns in table format showing 1.5 days of information
- * Phase 1: Using dummy data
  */
 
 'use client';
@@ -27,24 +27,24 @@ import Card, { CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Alert from '@/components/ui/Alert';
 import { TIMING } from '@/lib/constants';
-import {
-  DUMMY_DOCK_ORDERS,
-  getDisplayOrderNumber,
-  getStatusColorClass,
-  getStatusText,
-  type DockOrderData,
-} from '@/lib/dummyDockData';
+import { getDockMonitorData, type DockMonitorOrder } from '@/lib/api/dock-monitor';
 import VUTEQStaticBackground from '@/components/layout/VUTEQStaticBackground';
 import { usePageContext } from '@/contexts/PageContext';
 
 type SortColumn = 'order' | 'route' | 'destination' | 'supplier' | 'plannedSkidBuild' | 'completedSkidBuild' | 'plannedShipmentLoad' | 'completedShipmentLoad' | 'status';
 type SortDirection = 'asc' | 'desc';
 
+// Type for flattened order (includes route from shipment)
+interface FlattenedOrder extends DockMonitorOrder {
+  route: string;
+}
+
 export default function DockMonitorPage() {
   const router = useRouter();
   const { setSubtitle } = usePageContext();
-  const [orders, setOrders] = useState<DockOrderData[]>(DUMMY_DOCK_ORDERS);
-  const [loading, setLoading] = useState(false);
+  const [orders, setOrders] = useState<FlattenedOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [countdown, setCountdown] = useState(300); // 5 minutes = 300 seconds
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
@@ -53,20 +53,40 @@ export default function DockMonitorPage() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load dock orders
+  // Load dock orders from API
   const loadDockOrders = async () => {
     setLoading(true);
+    setError(null);
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    const result = await getDockMonitorData();
 
-    // In Phase 2, this will be an actual API call
-    setOrders(DUMMY_DOCK_ORDERS);
-    setLastRefreshed(new Date());
-    setCountdown(300); // Reset countdown
+    if (result.success && result.data) {
+      // Flatten shipments into orders with route information
+      const flattenedOrders: FlattenedOrder[] = [];
+
+      result.data.shipments.forEach((shipment) => {
+        shipment.orders.forEach((order) => {
+          flattenedOrders.push({
+            ...order,
+            route: shipment.routeNumber,
+          });
+        });
+      });
+
+      setOrders(flattenedOrders);
+      setLastRefreshed(new Date());
+      setCountdown(300); // Reset countdown
+    } else {
+      setError(result.error || 'Failed to load dock monitor data');
+    }
 
     setLoading(false);
   };
+
+  // Initial load
+  useEffect(() => {
+    loadDockOrders();
+  }, []);
 
   // Update subtitle dynamically for Header
   useEffect(() => {
@@ -117,27 +137,77 @@ export default function DockMonitorPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const formatTime = (timeString: string | null): string => {
-    if (!timeString) return '-';
+  /**
+   * Format ISO datetime to display format: "YYYY-MM-DD HH:MM"
+   */
+  const formatTime = (isoString: string | null): string => {
+    if (!isoString) return '-';
 
-    // Parse the time string (format: "HH:MM AM/PM")
-    // For now, we'll add today's date to it
-    const now = new Date();
-    const [time, period] = timeString.split(' ');
-    const [hours, minutes] = time.split(':');
+    try {
+      const date = new Date(isoString);
 
-    let hour = parseInt(hours);
-    if (period === 'PM' && hour !== 12) hour += 12;
-    if (period === 'AM' && hour === 12) hour = 0;
+      // Format: "YYYY-MM-DD HH:MM"
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
 
-    const dateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, parseInt(minutes));
+      return `${year}-${month}-${day} ${hours}:${minutes}`;
+    } catch (error) {
+      return '-';
+    }
+  };
 
-    // Format: "2025-10-30 10:30 AM"
-    const year = dateTime.getFullYear();
-    const month = String(dateTime.getMonth() + 1).padStart(2, '0');
-    const day = String(dateTime.getDate()).padStart(2, '0');
+  /**
+   * Get display order number (adds EX- prefix for supplement orders)
+   */
+  const getDisplayOrderNumber = (order: FlattenedOrder): string => {
+    return order.isSupplementOrder ? `EX-${order.orderNumber}` : order.orderNumber;
+  };
 
-    return `${year}-${month}-${day} ${timeString}`;
+  /**
+   * Get status color class for table rows
+   */
+  const getStatusColorClass = (status: string): string => {
+    switch (status) {
+      case 'COMPLETED':
+        return 'bg-green-500/30 border-l-4 border-green-500';
+      case 'ON_TIME':
+        return 'bg-blue-400/30 border-l-4 border-blue-400';
+      case 'BEHIND':
+        return 'bg-orange-500/30 border-l-4 border-orange-500';
+      case 'CRITICAL':
+        return 'bg-red-500/30 border-l-4 border-red-500';
+      case 'PROJECT_SHORT':
+        return 'bg-yellow-500/30 border-l-4 border-yellow-500';
+      case 'SHORT_SHIPPED':
+        return 'bg-purple-500/30 border-l-4 border-purple-500';
+      default:
+        return 'bg-gray-100';
+    }
+  };
+
+  /**
+   * Get status badge display text
+   */
+  const getStatusText = (status: string): string => {
+    switch (status) {
+      case 'COMPLETED':
+        return 'COMPLETED';
+      case 'ON_TIME':
+        return 'ON TIME';
+      case 'BEHIND':
+        return 'BEHIND';
+      case 'CRITICAL':
+        return 'CRITICAL';
+      case 'PROJECT_SHORT':
+        return 'PROJECT SHORT SHIP';
+      case 'SHORT_SHIPPED':
+        return 'SHORT SHIPPED';
+      default:
+        return 'UNKNOWN';
+    }
   };
 
   const handleSort = (column: SortColumn) => {
@@ -177,12 +247,12 @@ export default function DockMonitorPage() {
         bValue = b.route;
         break;
       case 'destination':
-        aValue = a.destination;
-        bValue = b.destination;
+        aValue = a.destination || a.dockCode || '';
+        bValue = b.destination || b.dockCode || '';
         break;
       case 'supplier':
-        aValue = a.supplier;
-        bValue = b.supplier;
+        aValue = a.supplierCode || '';
+        bValue = b.supplierCode || '';
         break;
       case 'plannedSkidBuild':
         aValue = a.plannedSkidBuild || '';
@@ -259,15 +329,44 @@ export default function DockMonitorPage() {
             </div>
           </Card>
 
+          {/* Error Alert */}
+          {error && (
+            <Alert variant="error" className="mb-2">
+              <div className="flex items-center justify-between">
+                <span>{error}</span>
+                <Button onClick={handleManualRefresh} variant="secondary" size="sm">
+                  Retry
+                </Button>
+              </div>
+            </Alert>
+          )}
+
           {/* Orders Table */}
           <Card>
             <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-4 py-3 -m-[1px] rounded-t-xl">
               <h2 className="text-lg font-bold text-white">ORDER STATUS ({orders.length} ORDERS)</h2>
             </div>
           <div className="p-0">
-            {/* Table View */}
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+            {/* Loading State */}
+            {loading && orders.length === 0 ? (
+              <div className="flex justify-center items-center py-12">
+                <div className="text-center">
+                  <i className="fa fa-spinner fa-spin text-4xl text-gray-600 mb-4"></i>
+                  <p className="text-gray-600">Loading dock monitor data...</p>
+                </div>
+              </div>
+            ) : orders.length === 0 ? (
+              <div className="flex justify-center items-center py-12">
+                <div className="text-center">
+                  <i className="fa fa-box text-4xl text-gray-400 mb-4"></i>
+                  <p className="text-gray-600">No orders found</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Table View */}
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-gray-700 text-white">
                     <th
@@ -357,10 +456,10 @@ export default function DockMonitorPage() {
                         {order.route}
                       </td>
                       <td className="px-3 py-2 text-sm font-semibold text-gray-900 border border-gray-300 text-center">
-                        {order.destination}
+                        {order.destination || order.dockCode || '-'}
                       </td>
                       <td className="px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300">
-                        {order.supplier}
+                        {order.supplierCode || '-'}
                       </td>
                       <td className="px-3 py-2 text-sm font-mono font-semibold text-gray-900 border border-gray-300 text-center">
                         {formatTime(order.plannedSkidBuild)}
@@ -384,6 +483,8 @@ export default function DockMonitorPage() {
                 </tbody>
               </table>
             </div>
+              </>
+            )}
           </div>
           </Card>
 
