@@ -100,6 +100,7 @@ export default function DockMonitorPage() {
 
     // Cleanup: clear subtitle when component unmounts
     return () => {
+      
       setSubtitle(null);
     };
   }, [lastRefreshed, countdown, setSubtitle]);

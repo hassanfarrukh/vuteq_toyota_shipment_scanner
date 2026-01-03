@@ -1608,3 +1608,331 @@ export async function getOrderSkids(
     };
   }
 }
+
+// ===== PRE-SHIPMENT SCAN APIs =====
+// Author: Hassan, Date: 2025-12-31
+// Pre-Shipment scanning workflow APIs
+
+export interface PreShipmentOrder {
+  orderNumber: string;
+  dockCode: string;
+  status: string;
+  skidCount: number;
+  scannedSkidCount: number;
+}
+
+export interface PreShipmentPlannedSkid {
+  skidId: string;
+  orderNumber: string;
+  dockCode: string;
+  palletizationCode: string;
+  skidNumber: string;
+  skidSide: string;
+  partCount: number;
+  isScanned: boolean;
+}
+
+export interface PreShipmentSessionResponse {
+  sessionId: string;
+  routeNumber: string;
+  supplierCode: string;
+  dockCode: string;
+  isResumed: boolean;
+  orders: PreShipmentOrder[];
+  plannedSkids: PreShipmentPlannedSkid[];
+}
+
+export interface PreShipmentListItem {
+  sessionId: string;
+  routeNumber: string;
+  supplierCode: string;
+  status: string;
+  totalSkidCount: number;
+  scannedSkidCount: number;
+  createdAt: string;
+  trailerNumber: string | null;
+}
+
+export interface PreShipmentScanSkidRequest {
+  sessionId: string;
+  skidId: string;
+  palletizationCode: string;
+  orderNumber: string;
+  dockCode: string;
+  scannedBy: string;
+}
+
+export interface PreShipmentTrailerInfoRequest {
+  sessionId: string;
+  trailerNumber: string;
+  sealNumber?: string;
+  driverFirstName: string;
+  driverLastName: string;
+  supplierFirstName?: string;
+  supplierLastName?: string;
+}
+
+export interface PreShipmentCompleteRequest {
+  sessionId: string;
+  completedBy: string;
+}
+
+export interface PreShipmentCompleteResponse {
+  confirmationNumber: string;
+  sessionId: string;
+  routeNumber: string;
+  totalSkidsShipped: number;
+  completedAt: string;
+}
+
+// Create Pre-Shipment session from manifest scan
+export async function createPreShipmentFromManifest(
+  manifestBarcode: string,
+  scannedBy: string
+): Promise<ApiResponse<PreShipmentSessionResponse>> {
+  try {
+    const response = await apiClient.post('/api/v1/pre-shipment/create-from-manifest', {
+      manifestBarcode,
+      scannedBy,
+    });
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to create Pre-Shipment session',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// List all Pre-Shipment sessions
+export async function getPreShipmentList(): Promise<ApiResponse<PreShipmentListItem[]>> {
+  try {
+    const response = await apiClient.get('/api/v1/pre-shipment/list');
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to fetch Pre-Shipment list',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Get Pre-Shipment session details
+export async function getPreShipmentSession(
+  sessionId: string
+): Promise<ApiResponse<PreShipmentSessionResponse>> {
+  try {
+    const response = await apiClient.get(`/api/v1/pre-shipment/${sessionId}`);
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to fetch Pre-Shipment session',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Scan individual skid
+export async function scanPreShipmentSkid(
+  request: PreShipmentScanSkidRequest
+): Promise<ApiResponse<{ success: boolean }>> {
+  try {
+    const { sessionId, ...payload } = request;
+    const response = await apiClient.post(
+      `/api/v1/pre-shipment/${sessionId}/scan-skid`,
+      payload
+    );
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to scan skid',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Update trailer and driver info
+export async function updatePreShipmentTrailerInfo(
+  request: PreShipmentTrailerInfoRequest
+): Promise<ApiResponse<{ success: boolean }>> {
+  try {
+    const { sessionId, ...payload } = request;
+    const response = await apiClient.put(
+      `/api/v1/pre-shipment/${sessionId}/trailer-info`,
+      payload
+    );
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to update trailer info',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Complete and submit Pre-Shipment to Toyota
+export async function completePreShipment(
+  request: PreShipmentCompleteRequest
+): Promise<ApiResponse<PreShipmentCompleteResponse>> {
+  try {
+    const { sessionId, ...payload } = request;
+    const response = await apiClient.post(
+      `/api/v1/pre-shipment/${sessionId}/complete`,
+      payload
+    );
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to complete Pre-Shipment',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Delete incomplete Pre-Shipment session
+export async function deletePreShipment(
+  sessionId: string
+): Promise<ApiResponse<boolean>> {
+  try {
+    const response = await apiClient.delete(`/api/v1/pre-shipment/${sessionId}`);
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: true,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: false,
+      error: result.message || 'Failed to delete Pre-Shipment session',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: false,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}

@@ -4,16 +4,19 @@ using Backend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace Backend.Data.Migrations
+namespace Backend.Migrations
 {
     [DbContext(typeof(VuteqDbContext))]
-    partial class VuteqDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251231142838_AddCreatedViaToShipmentLoadSession")]
+    partial class AddCreatedViaToShipmentLoadSession
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1339,72 +1342,6 @@ namespace Backend.Data.Migrations
                     b.ToTable("tblShipmentLoadSessions");
                 });
 
-            modelBuilder.Entity("Backend.Models.Entities.SiteSettings", b =>
-                {
-                    b.Property<Guid>("SettingId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("DockBehindThreshold")
-                        .HasColumnType("int");
-
-                    b.Property<int>("DockCriticalThreshold")
-                        .HasColumnType("int");
-
-                    b.Property<string>("DockDisplayMode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<int>("DockOrderLookbackHours")
-                        .HasColumnType("int");
-
-                    b.Property<int>("DockRefreshInterval")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("EnablePreShipmentScan")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("KanbanAlertOnDuplicate")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("KanbanAllowDuplicates")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("KanbanDuplicateWindowHours")
-                        .HasColumnType("int");
-
-                    b.Property<TimeOnly?>("PlantClosingTime")
-                        .HasColumnType("time");
-
-                    b.Property<string>("PlantLocation")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<TimeOnly?>("PlantOpeningTime")
-                        .HasColumnType("time");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("SettingId");
-
-                    b.HasIndex("CreatedBy");
-
-                    b.HasIndex("UpdatedBy");
-
-                    b.ToTable("tblSiteSettings");
-                });
-
             modelBuilder.Entity("Backend.Models.Entities.SkidBuildDraft", b =>
                 {
                     b.Property<Guid>("DraftId")
@@ -1606,9 +1543,6 @@ namespace Backend.Data.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<Guid?>("ScannedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("ShipmentLoadSessionId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("SkidNumber")
@@ -2312,21 +2246,6 @@ namespace Backend.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Backend.Models.Entities.SiteSettings", b =>
-                {
-                    b.HasOne("Backend.Models.Entities.UserMaster", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedBy");
-
-                    b.HasOne("Backend.Models.Entities.UserMaster", "UpdatedByUser")
-                        .WithMany()
-                        .HasForeignKey("UpdatedBy");
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("UpdatedByUser");
                 });
 
             modelBuilder.Entity("Backend.Models.Entities.SkidBuildDraft", b =>

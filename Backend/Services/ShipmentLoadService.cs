@@ -137,24 +137,33 @@ public class ShipmentLoadService : IShipmentLoadService
                 allOrdersOnRoute.Count, request.RouteNumber);
 
             // Check if active session exists for this route
-            var existingSession = await _repository.GetActiveSessionByRouteAsync(request.RouteNumber);
+            // IMPORTANT: First check for Pre-Shipment session, then Shipment Load session
+            var preShipmentSession = await _repository.GetSessionByRouteAndCreatedViaAsync(request.RouteNumber, "PreShipment");
+            var existingSession = preShipmentSession ?? await _repository.GetActiveSessionByRouteAsync(request.RouteNumber);
 
             bool isResumed = false;
 
             if (existingSession != null)
             {
-                _logger.LogInformation("Resuming existing session: {SessionId}, Status: {Status}",
-                    existingSession.SessionId, existingSession.Status);
+                _logger.LogInformation("Resuming existing session: {SessionId}, Status: {Status}, CreatedVia: {CreatedVia}",
+                    existingSession.SessionId, existingSession.Status, existingSession.CreatedVia);
                 isResumed = true;
 
-                // If session was in error state (from previous Toyota API failure), reset to active
-                // This allows users to retry the shipment
-                if (existingSession.Status == "error")
+                // CRITICAL FIX: Update PickupDateTime from request when resuming PreShipment session
+                // PreShipment sessions are created without PickupDateTime (from manifest scan)
+                // ShipmentLoad provides PickupDateTime from Pickup Route QR scan
+                bool needsUpdate = false;
+
+                if (existingSession.PickupDateTime == null && request.PickupDateTime != null)
                 {
-                    _logger.LogInformation("Resetting error session {SessionId} to active for retry", existingSession.SessionId);
-                    existingSession.Status = "active";
-                    existingSession.ToyotaStatus = null;
-                    existingSession.ToyotaErrorMessage = null;
+                    _logger.LogInformation("Updating PickupDateTime for PreShipment session {SessionId}: {PickupDateTime}",
+                        existingSession.SessionId, request.PickupDateTime);
+                    existingSession.PickupDateTime = request.PickupDateTime;
+                    needsUpdate = true;
+                }
+
+                if (needsUpdate)
+                {
                     existingSession.UpdatedAt = DateTime.UtcNow;
                     await _repository.UpdateSessionAsync(existingSession);
                 }
@@ -193,7 +202,7 @@ public class ShipmentLoadService : IShipmentLoadService
             var exceptions = await _repository.GetSessionExceptionsAsync(existingSession.SessionId);
 
             // Map to response DTO
-            var response = MapSessionToDto(existingSession, orders, exceptions, isResumed);
+            var response = await MapSessionToDtoAsync(existingSession, orders, exceptions, isResumed);
             response.ScannedOrderSkidCount = scannedOrderSkidCount;
 
             return ApiResponse<SessionResponseDto>.SuccessResponse(
@@ -240,7 +249,7 @@ public class ShipmentLoadService : IShipmentLoadService
             // Get ALL orders for this route (not just linked ones) to show planned orders
             var orders = await _repository.GetOrdersByRouteAsync(session.RouteNumber);
             var exceptions = await _repository.GetSessionExceptionsAsync(sessionId);
-            var response = MapSessionToDto(session, orders, exceptions, false);
+            var response = await MapSessionToDtoAsync(session, orders, exceptions, false);
 
             _logger.LogInformation("Session updated: {SessionId}", sessionId);
 
@@ -276,7 +285,7 @@ public class ShipmentLoadService : IShipmentLoadService
             // Get ALL orders for this route (not just linked ones) to show planned orders
             var orders = await _repository.GetOrdersByRouteAsync(session.RouteNumber);
             var exceptions = await _repository.GetSessionExceptionsAsync(sessionId);
-            var response = MapSessionToDto(session, orders, exceptions, false);
+            var response = await MapSessionToDtoAsync(session, orders, exceptions, false);
 
             return ApiResponse<SessionResponseDto>.SuccessResponse(
                 response,
@@ -373,6 +382,30 @@ public class ShipmentLoadService : IShipmentLoadService
             order.Status = OrderStatus.ShipmentLoading;
             order.UpdatedAt = DateTime.UtcNow;
             await _repository.UpdateOrdersAsync(new List<Order> { order });
+
+            // FIXED: If SkidId is provided, mark the individual skid as scanned
+            // CRITICAL: Pass PalletizationCode to help identify the correct skid
+            // Within same order, RawSkidId + PalletizationCode should uniquely identify the skid
+            if (!string.IsNullOrWhiteSpace(request.SkidId))
+            {
+                var skidScan = await _repository.GetSkidScanByRawSkidIdAsync(
+                    order.OrderId,
+                    request.SkidId,
+                    request.PalletizationCode);
+
+                if (skidScan != null)
+                {
+                    skidScan.ShipmentLoadSessionId = request.SessionId;
+                    await _repository.UpdateSkidScanAsync(skidScan);
+                    _logger.LogInformation("Marked individual skid {SkidId} (Pallet: {PalletizationCode}) as scanned for session {SessionId}",
+                        request.SkidId, request.PalletizationCode ?? "NULL", request.SessionId);
+                }
+                else
+                {
+                    _logger.LogWarning("SkidId {SkidId} (Pallet: {PalletizationCode}) not found for order {OrderNumber}-{DockCode}",
+                        request.SkidId, request.PalletizationCode ?? "NULL", request.OrderNumber, request.DockCode);
+                }
+            }
 
             var response = new ShipmentLoadScanResponseDto
             {
@@ -754,6 +787,7 @@ public class ShipmentLoadService : IShipmentLoadService
     /// <summary>
     /// Parse route and run from RouteNumber
     /// Example: "YUAN03" -> Route: "YUAN", Run: "03"
+    /// Example: "JAAJ-17" -> Route: "JAAJ", Run: "17"
     /// </summary>
     private (string route, string run) ParseRouteAndRun(string routeNumber)
     {
@@ -764,19 +798,25 @@ public class ShipmentLoadService : IShipmentLoadService
         var run = routeNumber.Substring(routeNumber.Length - 2);
         var route = routeNumber.Substring(0, routeNumber.Length - 2);
 
+        // Strip trailing hyphen from route (e.g., "JAAJ-17" -> route="JAAJ", run="17")
+        route = route.TrimEnd('-');
+
         return (route, run);
     }
 
     /// <summary>
     /// Map ShipmentLoadSession entity to SessionResponseDto
     /// </summary>
-    private SessionResponseDto MapSessionToDto(
+    private async Task<SessionResponseDto> MapSessionToDtoAsync(
         ShipmentLoadSession session,
         List<Order> orders,
         List<ShipmentLoadException> exceptions,
         bool isResumed)
     {
         var (route, _) = ParseRouteAndRun(session.RouteNumber);
+
+        // Get planned skids for all orders
+        var plannedSkids = await GetPlannedSkidsAsync(orders, session.SessionId);
 
         var orderDtos = orders.Select(o => new ShipmentLoadOrderDto
         {
@@ -787,7 +827,7 @@ public class ShipmentLoadService : IShipmentLoadService
             PlantCode = o.PlantCode,
             PlannedRoute = o.PlannedRoute,
             Status = o.Status.ToString(),
-            TotalSkids = 0, // Would need to query if needed
+            TotalSkids = plannedSkids.Count(s => s.OrderNumber == o.RealOrderNumber),
             IsScanned = o.ShipmentLoadSessionId == session.SessionId
         }).ToList();
 
@@ -818,9 +858,47 @@ public class ShipmentLoadService : IShipmentLoadService
             SupplierLastName = session.SupplierLastName,
             Orders = orderDtos,
             Exceptions = exceptionDtos,
+            PlannedSkids = plannedSkids,
             IsResumed = isResumed,
             CreatedAt = session.CreatedAt
         };
+    }
+
+    /// <summary>
+    /// Get all planned skids for a list of orders
+    /// FIXED: IsScanned checks if skid's ShipmentLoadSessionId matches CURRENT session
+    /// </summary>
+    private async Task<List<PlannedSkidDto>> GetPlannedSkidsAsync(List<Order> orders, Guid sessionId)
+    {
+        var plannedSkids = new List<PlannedSkidDto>();
+
+        foreach (var order in orders)
+        {
+            var skidScans = await _repository.GetSkidScansByOrderIdAsync(order.OrderId);
+
+            foreach (var scan in skidScans)
+            {
+                var rawSkidId = scan.RawSkidId ?? scan.SkidNumber.ToString();
+
+                // Extract SkidNumber (first 3 chars) and SkidSide (4th char)
+                var skidNumber = rawSkidId.Length >= 3 ? rawSkidId.Substring(0, 3) : scan.SkidNumber.ToString().PadLeft(3, '0');
+                var skidSide = rawSkidId.Length >= 4 ? rawSkidId.Substring(3, 1) : null;
+
+                plannedSkids.Add(new PlannedSkidDto
+                {
+                    OrderNumber = order.RealOrderNumber,
+                    DockCode = order.DockCode,
+                    SkidId = rawSkidId,
+                    SkidNumber = skidNumber,
+                    SkidSide = skidSide,
+                    PalletizationCode = scan.PalletizationCode,
+                    PartCount = 1, // Default to 1 part per skid (actual count tracked in PlannedItem)
+                    IsScanned = scan.ShipmentLoadSessionId == sessionId // FIXED: Check if scanned in CURRENT session
+                });
+            }
+        }
+
+        return plannedSkids;
     }
 
     /// <summary>
@@ -833,6 +911,7 @@ public class ShipmentLoadService : IShipmentLoadService
         List<Order> orders,
         List<ShipmentLoadException> shipmentLoadExceptions)
     {
+        // Parse route and run from session RouteNumber (e.g., "JAAJ-17" -> Route: "JAAJ", Run: "17")
         var (route, run) = ParseRouteAndRun(session.RouteNumber);
 
         var rootSupplierCode = orders.First().SupplierCode!;
@@ -918,7 +997,7 @@ public class ShipmentLoadService : IShipmentLoadService
         {
             Supplier = rootSupplierCode, // ROOT LEVEL SUPPLIER (from first order)
             Route = route,
-            Run = session.Run ?? run,
+            Run = run, // Use run from session (e.g., "17" from JAAJ-17)
             TrailerNumber = session.TrailerNumber!,
             DropHook = false, // HARDCODED - VUTEQ business rule (driver always present)
             SealNumber = session.SealNumber,

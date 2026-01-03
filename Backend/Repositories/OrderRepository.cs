@@ -221,6 +221,7 @@ public class OrderRepository : IOrderRepository
         {
             return await _context.PlannedItems
                 .Include(pi => pi.Order)
+                .Include(pi => pi.SkidScans)
                 .OrderByDescending(pi => pi.CreatedAt)
                 .AsNoTracking()
                 .ToListAsync();
@@ -241,6 +242,7 @@ public class OrderRepository : IOrderRepository
         {
             return await _context.PlannedItems
                 .Include(pi => pi.Order)
+                .Include(pi => pi.SkidScans)
                 .Where(pi => pi.Order.UploadId == uploadId)
                 .OrderByDescending(pi => pi.CreatedAt)
                 .AsNoTracking()
@@ -262,6 +264,7 @@ public class OrderRepository : IOrderRepository
         {
             return await _context.PlannedItems
                 .Include(pi => pi.Order)
+                .Include(pi => pi.SkidScans)
                 .Where(pi => pi.OrderId == orderId)
                 .OrderByDescending(pi => pi.CreatedAt)
                 .AsNoTracking()

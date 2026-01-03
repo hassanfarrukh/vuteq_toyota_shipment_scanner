@@ -24,4 +24,9 @@ public class PlannedItemWithOrderDto
     public DateTime CreatedAt { get; set; }
     public int TotalScanned { get; set; }
     public int RemainingBoxes { get; set; }
+
+    /// <summary>
+    /// Internal kanban(s) scanned for this item (comma-separated if multiple)
+    /// </summary>
+    public string? InternalKanban { get; set; }
 }

@@ -113,6 +113,7 @@ builder.Services.AddScoped<IOfficeRepository, OfficeRepository>();
 builder.Services.AddScoped<IWarehouseRepository, WarehouseRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ISettingsRepository, SettingsRepository>();
+builder.Services.AddScoped<ISiteSettingsRepository, SiteSettingsRepository>();
 builder.Services.AddScoped<IOrderUploadRepository, OrderUploadRepository>();
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<ISkidBuildRepository, SkidBuildRepository>();
@@ -126,6 +127,7 @@ builder.Services.AddScoped<IOfficeService, OfficeService>();
 builder.Services.AddScoped<IWarehouseService, WarehouseService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<ISiteSettingsService, SiteSettingsService>();
 
 // Excel Parser Service (PDF support removed - Excel only)
 builder.Services.AddScoped<IExcelParserService, ExcelParserService>();
@@ -147,6 +149,7 @@ builder.Services.AddScoped<IPlannedItemService, PlannedItemService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<ISkidBuildService, SkidBuildService>();
 builder.Services.AddScoped<IShipmentLoadService, ShipmentLoadService>();
+builder.Services.AddScoped<IPreShipmentService, PreShipmentService>();
 builder.Services.AddScoped<IDockMonitorService, DockMonitorService>();
 
 // Configure Swagger/OpenAPI

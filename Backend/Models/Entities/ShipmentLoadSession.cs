@@ -85,6 +85,14 @@ public class ShipmentLoadSession : AuditableEntity
     [MaxLength(20)]
     public string Status { get; set; } = "active";
 
+    /// <summary>
+    /// How this session was created: "PreShipment" or "ShipmentLoad"
+    /// PreShipment = created from manifest scan before driver arrives
+    /// ShipmentLoad = created from pickup QR when driver arrives (default)
+    /// </summary>
+    [MaxLength(20)]
+    public string CreatedVia { get; set; } = "ShipmentLoad";
+
     public DateTime? CompletedAt { get; set; }
 
     // ===== TOYOTA API RESPONSE FIELDS =====

@@ -73,6 +73,7 @@ public class VuteqDbContext : DbContext
     public DbSet<DockMonitorSetting> DockMonitorSettings { get; set; }
     public DbSet<InternalKanbanSetting> InternalKanbanSettings { get; set; }
     public DbSet<ToyotaApiConfig> ToyotaApiConfigs { get; set; }
+    public DbSet<SiteSettings> SiteSettings { get; set; }
     #endregion
 
     /// <summary>

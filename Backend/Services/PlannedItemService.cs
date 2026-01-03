@@ -63,7 +63,13 @@ public class PlannedItemService : IPlannedItemService
                 ShortOver = pi.ShortOver,
                 CreatedAt = pi.CreatedAt,
                 TotalScanned = pi.SkidScans?.Count ?? 0,
-                RemainingBoxes = (pi.TotalBoxPlanned ?? 0) - (pi.SkidScans?.Count ?? 0)
+                RemainingBoxes = (pi.TotalBoxPlanned ?? 0) - (pi.SkidScans?.Count ?? 0),
+                InternalKanban = pi.SkidScans != null && pi.SkidScans.Any(s => !string.IsNullOrEmpty(s.InternalKanban))
+                    ? string.Join(", ", pi.SkidScans
+                        .Where(s => !string.IsNullOrEmpty(s.InternalKanban))
+                        .Select(s => s.InternalKanban)
+                        .Distinct())
+                    : null
             }).ToList();
 
             var message = orderId.HasValue

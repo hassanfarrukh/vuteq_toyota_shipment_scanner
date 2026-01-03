@@ -55,6 +55,7 @@ public class SessionResponseDto
     public string? SupplierLastName { get; set; }
     public List<ShipmentLoadOrderDto> Orders { get; set; } = new List<ShipmentLoadOrderDto>();
     public List<ExceptionDto> Exceptions { get; set; } = new List<ExceptionDto>();
+    public List<PlannedSkidDto> PlannedSkids { get; set; } = new List<PlannedSkidDto>();
     public bool IsResumed { get; set; }
     public DateTime CreatedAt { get; set; }
     public int? ScannedOrderSkidCount { get; set; }

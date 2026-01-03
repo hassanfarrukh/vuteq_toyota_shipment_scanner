@@ -35,6 +35,8 @@ public interface IShipmentLoadRepository
 
     // Skid operations
     Task<List<SkidScan>> GetSkidScansByOrderIdAsync(Guid orderId);
+    Task<SkidScan?> GetSkidScanByRawSkidIdAsync(Guid orderId, string rawSkidId, string? palletizationCode = null);
+    Task UpdateSkidScanAsync(SkidScan skidScan);
 
     // Exception operations
     Task<ShipmentLoadException> AddExceptionAsync(ShipmentLoadException exception);
@@ -42,6 +44,11 @@ public interface IShipmentLoadRepository
 
     // Skid Build Exception operations
     Task<List<SkidBuildException>> GetSkidBuildExceptionsByOrderIdAsync(Guid orderId);
+
+    // Pre-Shipment operations
+    Task<string?> GetRouteByOrderNumberAsync(string orderNumber, string dockCode);
+    Task<ShipmentLoadSession?> GetSessionByRouteAndCreatedViaAsync(string routeNumber, string createdVia);
+    Task<List<ShipmentLoadSession>> GetSessionsByCreatedViaAsync(string createdVia);
 }
 
 /// <summary>
@@ -432,6 +439,65 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
         }
     }
 
+    /// <summary>
+    /// Get a specific skid scan by order ID, raw skid ID, and palletization code
+    /// IMPORTANT: Must match ALL three fields for exact skid identification
+    /// Within the same order, the same RawSkidId can appear with different PalletizationCode
+    /// </summary>
+    public async Task<SkidScan?> GetSkidScanByRawSkidIdAsync(Guid orderId, string rawSkidId, string? palletizationCode = null)
+    {
+        try
+        {
+            // Get all PlannedItemIds for this order
+            var plannedItemIds = await _context.PlannedItems
+                .Where(pi => pi.OrderId == orderId)
+                .Select(pi => pi.PlannedItemId)
+                .ToListAsync();
+
+            if (!plannedItemIds.Any())
+                return null;
+
+            // Find the skid scan matching the raw skid ID AND palletization code
+            // CRITICAL: Both RawSkidId and PalletizationCode must match for unique identification
+            var query = _context.SkidScans
+                .Where(s => plannedItemIds.Contains(s.PlannedItemId) && s.RawSkidId == rawSkidId);
+
+            // Add palletization code filter if provided
+            if (!string.IsNullOrWhiteSpace(palletizationCode))
+            {
+                query = query.Where(s => s.PalletizationCode == palletizationCode);
+            }
+
+            return await query.FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving skid scan for order {OrderId}, RawSkidId {RawSkidId}, PalletizationCode {PalletizationCode}",
+                orderId, rawSkidId, palletizationCode ?? "NULL");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Update a skid scan record
+    /// </summary>
+    public async Task UpdateSkidScanAsync(SkidScan skidScan)
+    {
+        try
+        {
+            skidScan.UpdatedAt = DateTime.UtcNow;
+            _context.SkidScans.Update(skidScan);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Updated SkidScan {ScanId} - ShipmentLoadSessionId: {SessionId}",
+                skidScan.ScanId, skidScan.ShipmentLoadSessionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating skid scan: {ScanId}", skidScan.ScanId);
+            throw;
+        }
+    }
+
     // ===== EXCEPTION OPERATIONS =====
 
     /// <summary>
@@ -493,6 +559,87 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving skid build exceptions for order: {OrderId}", orderId);
+            throw;
+        }
+    }
+
+    // ===== PRE-SHIPMENT OPERATIONS =====
+
+    /// <summary>
+    /// Get route number by order number and dock code
+    /// Used in Pre-Shipment to determine route from manifest scan
+    /// </summary>
+    public async Task<string?> GetRouteByOrderNumberAsync(string orderNumber, string dockCode)
+    {
+        try
+        {
+            var order = await _context.Orders
+                .Where(o => o.RealOrderNumber == orderNumber && o.DockCode == dockCode)
+                .Select(o => o.PlannedRoute)
+                .FirstOrDefaultAsync();
+
+            _logger.LogInformation("Route lookup - OrderNumber: {OrderNumber}, DockCode: {DockCode}, PlannedRoute: {PlannedRoute}",
+                orderNumber, dockCode, order ?? "NULL");
+
+            return order;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving route for order: {OrderNumber}-{DockCode}", orderNumber, dockCode);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get session by route number and CreatedVia field
+    /// Used to find existing Pre-Shipment sessions or Shipment Load sessions
+    /// </summary>
+    public async Task<ShipmentLoadSession?> GetSessionByRouteAndCreatedViaAsync(string routeNumber, string createdVia)
+    {
+        try
+        {
+            // Normalize route for comparison
+            var normalizedRoute = routeNumber.Replace("-", "");
+            var routeWithHyphen = normalizedRoute.Length > 2
+                ? normalizedRoute.Insert(normalizedRoute.Length - 2, "-")
+                : normalizedRoute;
+
+            return await _context.ShipmentLoadSessions
+                .Include(s => s.ShipmentLoadExceptions)
+                .Where(s =>
+                    (s.RouteNumber == routeNumber ||
+                     s.RouteNumber == normalizedRoute ||
+                     s.RouteNumber == routeWithHyphen) &&
+                    s.CreatedVia == createdVia &&
+                    (s.Status == "active" || s.Status == "error"))
+                .OrderByDescending(s => s.CreatedAt)
+                .FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving session for route: {RouteNumber}, CreatedVia: {CreatedVia}",
+                routeNumber, createdVia);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get all sessions by CreatedVia field
+    /// Used to get all Pre-Shipment sessions or Shipment Load sessions
+    /// </summary>
+    public async Task<List<ShipmentLoadSession>> GetSessionsByCreatedViaAsync(string createdVia)
+    {
+        try
+        {
+            return await _context.ShipmentLoadSessions
+                .Include(s => s.ShipmentLoadExceptions)
+                .Where(s => s.CreatedVia == createdVia)
+                .OrderByDescending(s => s.CreatedAt)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving sessions for CreatedVia: {CreatedVia}", createdVia);
             throw;
         }
     }

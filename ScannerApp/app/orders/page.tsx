@@ -273,6 +273,7 @@ export default function OrdersPage() {
   const handleOrderRowClick = (orderId: string, orderNumber: string) => {
     setFilteredOrderId(orderId);
     setFilteredOrderNumber(orderNumber);
+    setSearchQuery(''); // Clear search query when viewing parts for specific order
     setActiveTab('planned-parts');
     loadPlannedItems(orderId);
   };

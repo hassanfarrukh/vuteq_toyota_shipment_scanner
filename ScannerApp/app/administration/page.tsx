@@ -69,8 +69,10 @@
  *               global location in Header immediately without page refresh. (Hassan)
  * Updated: 2025-12-14 - Added Toyota API Settings tab for managing Toyota API configurations (QA and PROD environments).
  *               Full CRUD operations: create, read, update, delete, and test connection functionality. (Hassan)
+ * Updated: 2026-01-03 - Added Site Settings tab with 3 sub-tabs (Site Settings, Dock Monitor, Internal Kanban) for
+ *               centralized site-wide configuration management. (Hassan)
  *
- * Admin-only page with 7 tabs:
+ * Admin-only page with 8 tabs:
  * 1. Office Management - Manage office locations (CONNECTED TO API)
  * 2. Warehouse Management - Manage warehouse facilities (CONNECTED TO API)
  * 3. Internal Kanban - Configure kanban duplication rules (CONNECTED TO API)
@@ -78,6 +80,10 @@
  * 5. User Management - Manage user accounts and permissions (CONNECTED TO API)
  * 6. Dock Monitor Settings - Configure dock monitor thresholds and display (CONNECTED TO API)
  * 7. Toyota API Settings - Manage Toyota API configurations for QA and PROD (CONNECTED TO API)
+ * 8. Site Settings - Centralized site-wide settings with 3 sub-tabs:
+ *    - Site Settings: Plant location, hours, pre-shipment scan
+ *    - Dock Monitor: Thresholds, display mode, refresh interval, lookback hours
+ *    - Internal Kanban: Duplicate rules, window hours, alerts
  */
 
 'use client';
@@ -98,9 +104,10 @@ import { getOffices, createOffice as apiCreateOffice, updateOffice as apiUpdateO
 import { getWarehouses, createWarehouse as apiCreateWarehouse, updateWarehouse as apiUpdateWarehouse, deleteWarehouse as apiDeleteWarehouse, Warehouse as ApiWarehouse, WarehouseDto } from '@/lib/api/warehouses';
 import { getInternalKanbanSettings, saveInternalKanbanSettings, getDockMonitorSettings, saveDockMonitorSettings, InternalKanbanSettings, DockMonitorSettings } from '@/lib/api/settings';
 import { getAllToyotaConfigs, createToyotaConfig, updateToyotaConfig, deleteToyotaConfig, testToyotaConnection, ToyotaConfigResponse, ToyotaConfigCreate, ToyotaConfigUpdate, TOYOTA_CONFIG_DEFAULTS } from '@/lib/api/toyota-config';
+import { getSiteSettings, updateSiteSettings, SiteSettings } from '@/lib/api/siteSettings';
 import { fileLogger } from '@/lib/logger';
 
-type Tab = 'office' | 'warehouse' | 'internal-kanban' | 'parts' | 'user' | 'dock-monitor' | 'toyota-api';
+type Tab = 'office' | 'warehouse' | 'internal-kanban' | 'parts' | 'user' | 'dock-monitor' | 'toyota-api' | 'site-settings';
 type DisplayMode = 'FULL' | 'SHIPMENT_ONLY' | 'SKID_ONLY' | 'COMPLETION_ONLY';
 
 // Part interface
@@ -168,6 +175,7 @@ export default function AdministrationPage() {
   const [isLoadingKanbanSettings, setIsLoadingKanbanSettings] = useState(false);
   const [isLoadingDockSettings, setIsLoadingDockSettings] = useState(false);
   const [isLoadingToyotaConfigs, setIsLoadingToyotaConfigs] = useState(true);
+  const [isLoadingSiteSettings, setIsLoadingSiteSettings] = useState(false);
 
   // State for data arrays
   const [offices, setOffices] = useState<any[]>([]);
@@ -251,6 +259,23 @@ export default function AdministrationPage() {
   const [selectedLocation, setSelectedLocation] = useState<string>('loc-001');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Site Settings state and sub-tab tracker
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>({
+    plantLocation: '',
+    plantOpeningTime: '07:00',
+    plantClosingTime: '17:00',
+    enablePreShipmentScan: false,
+    behindThreshold: 15,
+    criticalThreshold: 30,
+    displayMode: 'FULL',
+    refreshInterval: 30000,
+    orderLookbackHours: 24,
+    allowDuplicates: false,
+    duplicateWindowHours: 24,
+    alertOnDuplicate: true,
+  });
+  const [activeSiteSettingsTab, setActiveSiteSettingsTab] = useState<'site' | 'dock' | 'kanban'>('site');
+
   // Fetch data on component mount
   useEffect(() => {
     fetchOffices();
@@ -272,6 +297,14 @@ export default function AdministrationPage() {
   useEffect(() => {
     if (activeTab === 'dock-monitor') {
       fetchDockMonitorSettings();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Fetch settings when Site Settings tab is activated
+  useEffect(() => {
+    if (activeTab === 'site-settings') {
+      fetchSiteSettings();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -424,6 +457,22 @@ export default function AdministrationPage() {
     setIsLoadingDockSettings(false);
   };
 
+  // Fetch Site Settings from API
+  const fetchSiteSettings = async () => {
+    setIsLoadingSiteSettings(true);
+    setError(null);
+
+    const result = await getSiteSettings();
+
+    if (result.success && result.data) {
+      setSiteSettings(result.data);
+    } else {
+      setError(result.error || 'Failed to load Site Settings');
+    }
+
+    setIsLoadingSiteSettings(false);
+  };
+
   const handleSaveKanbanSettings = async () => {
     setError(null);
     setSuccess(null);
@@ -493,6 +542,99 @@ export default function AdministrationPage() {
     setSelectedLocation('loc-001');
     setError(null);
     setSuccess(null);
+  };
+
+  // Site Settings save handlers - one for each tab
+  const handleSaveSiteSettings = async () => {
+    setError(null);
+    setSuccess(null);
+    setIsSaving(true);
+
+    const settingsToSave: Partial<SiteSettings> = {
+      plantLocation: siteSettings.plantLocation,
+      plantOpeningTime: siteSettings.plantOpeningTime,
+      plantClosingTime: siteSettings.plantClosingTime,
+      enablePreShipmentScan: siteSettings.enablePreShipmentScan,
+    };
+
+    const result = await updateSiteSettings(settingsToSave);
+
+    if (result.success) {
+      setSuccess('Site settings saved successfully!');
+      if (result.data) setSiteSettings(result.data);
+      setTimeout(() => setSuccess(null), 3000);
+    } else {
+      setError(result.error || 'Failed to save site settings');
+    }
+
+    setIsSaving(false);
+  };
+
+  const handleSaveDockMonitorTab = async () => {
+    setError(null);
+    setSuccess(null);
+
+    // Validation
+    if (siteSettings.behindThreshold <= 0) {
+      setError('Behind threshold must be greater than 0');
+      return;
+    }
+
+    if (siteSettings.criticalThreshold <= siteSettings.behindThreshold) {
+      setError('Critical threshold must be greater than behind threshold');
+      return;
+    }
+
+    if (siteSettings.refreshInterval < 1000) {
+      setError('Refresh interval must be at least 1000 milliseconds');
+      return;
+    }
+
+    setIsSaving(true);
+
+    const settingsToSave: Partial<SiteSettings> = {
+      behindThreshold: siteSettings.behindThreshold,
+      criticalThreshold: siteSettings.criticalThreshold,
+      displayMode: siteSettings.displayMode,
+      refreshInterval: siteSettings.refreshInterval,
+      orderLookbackHours: siteSettings.orderLookbackHours,
+    };
+
+    const result = await updateSiteSettings(settingsToSave);
+
+    if (result.success) {
+      setSuccess('Dock Monitor settings saved successfully!');
+      if (result.data) setSiteSettings(result.data);
+      setTimeout(() => setSuccess(null), 3000);
+    } else {
+      setError(result.error || 'Failed to save Dock Monitor settings');
+    }
+
+    setIsSaving(false);
+  };
+
+  const handleSaveInternalKanbanTab = async () => {
+    setError(null);
+    setSuccess(null);
+    setIsSaving(true);
+
+    const settingsToSave: Partial<SiteSettings> = {
+      allowDuplicates: siteSettings.allowDuplicates,
+      duplicateWindowHours: siteSettings.duplicateWindowHours,
+      alertOnDuplicate: siteSettings.alertOnDuplicate,
+    };
+
+    const result = await updateSiteSettings(settingsToSave);
+
+    if (result.success) {
+      setSuccess('Internal Kanban settings saved successfully!');
+      if (result.data) setSiteSettings(result.data);
+      setTimeout(() => setSuccess(null), 3000);
+    } else {
+      setError(result.error || 'Failed to save Internal Kanban settings');
+    }
+
+    setIsSaving(false);
   };
 
   // CRUD handlers (Phase 1 - console.log only)
@@ -1100,6 +1242,17 @@ export default function AdministrationPage() {
               >
                 <i className="fa-light fa-cloud-arrow-up" style={{ fontSize: '20px', color: '#253262' }}></i>
                 Toyota API
+              </button>
+              <button
+                onClick={() => setActiveTab('site-settings')}
+                className={`flex items-center gap-2 px-6 py-3 text-base font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  activeTab === 'site-settings'
+                    ? 'border-[#253262] text-[#253262]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <i className="fa-light fa-cog" style={{ fontSize: '20px', color: '#253262' }}></i>
+                Site Settings
               </button>
               {/* Parts Maintenance tab hidden - will be re-enabled when feature is complete */}
               {/* <button
@@ -1928,6 +2081,368 @@ export default function AdministrationPage() {
                 onClick={() => router.push('/')}
                 variant="primary"
                 className="w-full sm:w-auto flex-1 sm:flex-none"
+              >
+                <i className="fa-light fa-home mr-2"></i>
+                Back to Dashboard
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Site Settings Tab with 3 Sub-tabs */}
+        {activeTab === 'site-settings' && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Site Settings</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {/* Sub-tab Navigation */}
+                <div className="flex border-b border-gray-200 px-6">
+                  <button
+                    onClick={() => setActiveSiteSettingsTab('site')}
+                    className={`px-4 py-3 text-sm font-medium transition-colors relative flex items-center gap-2 ${
+                      activeSiteSettingsTab === 'site'
+                        ? 'text-[#253262] border-b-2 border-[#253262]'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <i className="fa-light fa-building" style={{ fontSize: '16px', color: '#253262' }}></i>
+                    Site Settings
+                  </button>
+                  <button
+                    onClick={() => setActiveSiteSettingsTab('dock')}
+                    className={`px-4 py-3 text-sm font-medium transition-colors relative flex items-center gap-2 ${
+                      activeSiteSettingsTab === 'dock'
+                        ? 'text-[#253262] border-b-2 border-[#253262]'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <i className="fa-light fa-desktop" style={{ fontSize: '16px', color: '#253262' }}></i>
+                    Dock Monitor
+                  </button>
+                  <button
+                    onClick={() => setActiveSiteSettingsTab('kanban')}
+                    className={`px-4 py-3 text-sm font-medium transition-colors relative flex items-center gap-2 ${
+                      activeSiteSettingsTab === 'kanban'
+                        ? 'text-[#253262] border-b-2 border-[#253262]'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <i className="fa-light fa-square-kanban" style={{ fontSize: '16px', color: '#253262' }}></i>
+                    Internal Kanban
+                  </button>
+                </div>
+
+                {/* Sub-tab Content */}
+                <div className="p-6">
+                  {isLoadingSiteSettings ? (
+                    <div className="flex justify-center items-center py-12">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#253262]"></div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Tab 1: Site Settings */}
+                      {activeSiteSettingsTab === 'site' && (
+                        <div className="space-y-6">
+                          {/* Section Header with Tooltip */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <h3 className="text-base font-semibold text-gray-900">Site Settings</h3>
+                            <div className="relative group">
+                              <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                Configure your plant&apos;s basic operating information
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-6">
+                            {/* Plant Location */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Plant Location
+                              </label>
+                              <select
+                                value={siteSettings.plantLocation}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, plantLocation: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#253262] focus:border-transparent"
+                              >
+                                <option value="">Select Plant Location</option>
+                                {LOCATIONS.map((location) => (
+                                  <option key={location.id} value={location.name}>{location.name}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Plant Opening and Closing Time */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  Plant Opening Time
+                                </label>
+                                <Input
+                                  type="time"
+                                  value={siteSettings.plantOpeningTime}
+                                  onChange={(e) => setSiteSettings({ ...siteSettings, plantOpeningTime: e.target.value })}
+                                  className="w-full"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  Plant Closing Time
+                                </label>
+                                <Input
+                                  type="time"
+                                  value={siteSettings.plantClosingTime}
+                                  onChange={(e) => setSiteSettings({ ...siteSettings, plantClosingTime: e.target.value })}
+                                  className="w-full"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Enable PreShipment Scan */}
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                id="enablePreShipmentScan"
+                                checked={siteSettings.enablePreShipmentScan}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, enablePreShipmentScan: e.target.checked })}
+                                className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
+                              />
+                              <label htmlFor="enablePreShipmentScan" className="text-sm font-medium text-gray-700">
+                                Enable PreShipment Scan
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Save Button */}
+                          <div className="flex justify-end pt-4 border-t border-gray-200">
+                            <Button
+                              onClick={handleSaveSiteSettings}
+                              disabled={isSaving}
+                              loading={isSaving}
+                              variant="success-light"
+                              className="w-full sm:w-auto"
+                            >
+                              <i className="fa-light fa-floppy-disk mr-2"></i>
+                              {isSaving ? 'Saving...' : 'Save Settings'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tab 2: Dock Monitor */}
+                      {activeSiteSettingsTab === 'dock' && (
+                        <div className="space-y-6">
+                          {/* Section Header with Tooltip */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <h3 className="text-base font-semibold text-gray-900">Dock Monitor</h3>
+                            <div className="relative group">
+                              <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                Configure dock monitor display thresholds and refresh settings
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Behind Threshold */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Behind Threshold (minutes)
+                              </label>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={siteSettings.behindThreshold}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, behindThreshold: parseInt(e.target.value) || 0 })}
+                                placeholder="Enter minutes"
+                                className="w-full"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">
+                                Time in minutes when orders should be marked as behind schedule
+                              </p>
+                            </div>
+
+                            {/* Critical Threshold */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Critical Threshold (minutes)
+                              </label>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={siteSettings.criticalThreshold}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, criticalThreshold: parseInt(e.target.value) || 0 })}
+                                placeholder="Enter minutes"
+                                className="w-full"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">
+                                Time in minutes when orders should be marked as critically behind schedule
+                              </p>
+                            </div>
+
+                            {/* Display Mode */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Display Mode
+                              </label>
+                              <select
+                                value={siteSettings.displayMode}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, displayMode: e.target.value as 'FULL' | 'COMPACT' })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#253262] focus:border-transparent"
+                              >
+                                <option value="FULL">Full</option>
+                                <option value="COMPACT">Compact</option>
+                              </select>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Choose how dock monitor information is displayed
+                              </p>
+                            </div>
+
+                            {/* Refresh Interval */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Refresh Interval (milliseconds)
+                              </label>
+                              <Input
+                                type="number"
+                                min="1000"
+                                step="1000"
+                                value={siteSettings.refreshInterval}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, refreshInterval: parseInt(e.target.value) || 30000 })}
+                                placeholder="Enter milliseconds"
+                                className="w-full"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">
+                                How often the dock monitor should refresh data (minimum 1000ms)
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Order Lookback Hours - Full width */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Order Lookback Hours
+                            </label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={siteSettings.orderLookbackHours}
+                              onChange={(e) => setSiteSettings({ ...siteSettings, orderLookbackHours: parseInt(e.target.value) || 24 })}
+                              placeholder="Enter hours"
+                              className="w-full"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                              How many hours back to search for orders in the dock monitor
+                            </p>
+                          </div>
+
+                          {/* Save Button */}
+                          <div className="flex justify-end pt-4 border-t border-gray-200">
+                            <Button
+                              onClick={handleSaveDockMonitorTab}
+                              disabled={isSaving}
+                              loading={isSaving}
+                              variant="success-light"
+                              className="w-full sm:w-auto"
+                            >
+                              <i className="fa-light fa-floppy-disk mr-2"></i>
+                              {isSaving ? 'Saving...' : 'Save Settings'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tab 3: Internal Kanban */}
+                      {activeSiteSettingsTab === 'kanban' && (
+                        <div className="space-y-6">
+                          {/* Section Header with Tooltip */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <h3 className="text-base font-semibold text-gray-900">Internal Kanban</h3>
+                            <div className="relative group">
+                              <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                Configure internal kanban duplicate detection rules
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-6">
+                            {/* Allow Duplicates */}
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                id="allowDuplicates"
+                                checked={siteSettings.allowDuplicates}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, allowDuplicates: e.target.checked })}
+                                className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
+                              />
+                              <label htmlFor="allowDuplicates" className="text-sm font-medium text-gray-700">
+                                Allow Duplicates
+                              </label>
+                            </div>
+
+                            {/* Duplicate Window Hours */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Duplicate Window Hours
+                              </label>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={siteSettings.duplicateWindowHours}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, duplicateWindowHours: parseInt(e.target.value) || 24 })}
+                                placeholder="Enter hours"
+                                className="w-full"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">
+                                Time window in hours to check for duplicate scans
+                              </p>
+                            </div>
+
+                            {/* Alert on Duplicate */}
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                id="alertOnDuplicate"
+                                checked={siteSettings.alertOnDuplicate}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, alertOnDuplicate: e.target.checked })}
+                                className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
+                              />
+                              <label htmlFor="alertOnDuplicate" className="text-sm font-medium text-gray-700">
+                                Alert on Duplicate
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Save Button */}
+                          <div className="flex justify-end pt-4 border-t border-gray-200">
+                            <Button
+                              onClick={handleSaveInternalKanbanTab}
+                              disabled={isSaving}
+                              loading={isSaving}
+                              variant="success-light"
+                              className="w-full sm:w-auto"
+                            >
+                              <i className="fa-light fa-floppy-disk mr-2"></i>
+                              {isSaving ? 'Saving...' : 'Save Settings'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Back to Dashboard Button */}
+            <div className="flex justify-end">
+              <Button
+                onClick={() => router.push('/')}
+                variant="primary"
+                className="w-full sm:w-auto"
               >
                 <i className="fa-light fa-home mr-2"></i>
                 Back to Dashboard

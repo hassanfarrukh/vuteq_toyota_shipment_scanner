@@ -73,6 +73,13 @@ public class SkidScan : AuditableEntity
     /// </summary>
     public bool IsSkidCut { get; set; } = false;
 
+    /// <summary>
+    /// Shipment Load Session ID - tracks which session this skid was scanned in during loading
+    /// NULL = skid built but not scanned for shipment yet
+    /// NOT NULL = skid scanned during shipment load in this session
+    /// </summary>
+    public Guid? ShipmentLoadSessionId { get; set; }
+
     public DateTime ScannedAt { get; set; } = DateTime.UtcNow;
 
     public Guid? ScannedBy { get; set; }
