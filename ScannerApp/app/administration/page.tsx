@@ -60,7 +60,10 @@
  *               Menu Level, Operation, Code. Updated CreateUserDto interface to make username required and name optional. (Hassan)
  * Updated: 2025-12-01 - CONNECTED SETTINGS TO REAL APIs: Integrated Internal Kanban and Dock Monitor settings with backend APIs.
  *               Added loading states, API calls for fetching/saving settings. Updated Internal Kanban UI to match API structure
- *               (allowDuplicates, duplicateWindowHours, alertOnDuplicate). (Hassan)
+ *               (kanbanAllowDuplicates, kanbanDuplicateWindowHours, kanbanAlertOnDuplicate). (Hassan)
+ * Updated: 2026-01-03 - FIXED API PROPERTY NAMES: Updated property names to match backend (dockBehindThreshold, dockCriticalThreshold,
+ *               dockDisplayMode, dockRefreshInterval, dockOrderLookbackHours, kanbanAllowDuplicates, kanbanDuplicateWindowHours,
+ *               kanbanAlertOnDuplicate). Changed Site Settings icon from fa-factory to fa-industry. (Hassan)
  * Updated: 2025-12-01 - FIXED DOCK MONITOR LOCATION SELECTION: Changed Plant/Location from checkboxes (multi-select) back to
  *               radio buttons (single select). Added selectedLocation state to track single selection. User can only select ONE
  *               location at a time (their current working office/location). This location will be displayed in app header and
@@ -102,12 +105,12 @@ import SlideOutPanel from '@/components/ui/SlideOutPanel';
 import { getUsers, createUser as apiCreateUser, updateUser as apiUpdateUser, deleteUser as apiDeleteUser, User as ApiUser, CreateUserDto, UpdateUserDto } from '@/lib/api/users';
 import { getOffices, createOffice as apiCreateOffice, updateOffice as apiUpdateOffice, deleteOffice as apiDeleteOffice, Office as ApiOffice, OfficeDto } from '@/lib/api/offices';
 import { getWarehouses, createWarehouse as apiCreateWarehouse, updateWarehouse as apiUpdateWarehouse, deleteWarehouse as apiDeleteWarehouse, Warehouse as ApiWarehouse, WarehouseDto } from '@/lib/api/warehouses';
-import { getInternalKanbanSettings, saveInternalKanbanSettings, getDockMonitorSettings, saveDockMonitorSettings, InternalKanbanSettings, DockMonitorSettings } from '@/lib/api/settings';
+// Removed: Internal Kanban and Dock Monitor settings (now part of Site Settings)
 import { getAllToyotaConfigs, createToyotaConfig, updateToyotaConfig, deleteToyotaConfig, testToyotaConnection, ToyotaConfigResponse, ToyotaConfigCreate, ToyotaConfigUpdate, TOYOTA_CONFIG_DEFAULTS } from '@/lib/api/toyota-config';
 import { getSiteSettings, updateSiteSettings, SiteSettings } from '@/lib/api/siteSettings';
 import { fileLogger } from '@/lib/logger';
 
-type Tab = 'office' | 'warehouse' | 'internal-kanban' | 'parts' | 'user' | 'dock-monitor' | 'toyota-api' | 'site-settings';
+type Tab = 'office' | 'warehouse' | 'parts' | 'user' | 'toyota-api' | 'site-settings';
 type DisplayMode = 'FULL' | 'SHIPMENT_ONLY' | 'SKID_ONLY' | 'COMPLETION_ONLY';
 
 // Part interface
@@ -172,8 +175,6 @@ export default function AdministrationPage() {
   const [isLoadingOffices, setIsLoadingOffices] = useState(true);
   const [isLoadingWarehouses, setIsLoadingWarehouses] = useState(true);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
-  const [isLoadingKanbanSettings, setIsLoadingKanbanSettings] = useState(false);
-  const [isLoadingDockSettings, setIsLoadingDockSettings] = useState(false);
   const [isLoadingToyotaConfigs, setIsLoadingToyotaConfigs] = useState(true);
   const [isLoadingSiteSettings, setIsLoadingSiteSettings] = useState(false);
 
@@ -240,23 +241,6 @@ export default function AdministrationPage() {
     isActive: true
   });
   const [isTestingConnection, setIsTestingConnection] = useState(false);
-
-  // Internal Kanban Settings state
-  const [kanbanSettings, setKanbanSettings] = useState<InternalKanbanSettings>({
-    allowDuplicates: false,
-    duplicateWindowHours: 24,
-    alertOnDuplicate: true,
-  });
-
-  // Dock Monitor Settings state (from old settings page)
-  const [dockSettings, setDockSettings] = useState<DockMonitorSettings>({
-    behindThreshold: 15,
-    criticalThreshold: 30,
-    displayMode: 'FULL' as DisplayMode,
-    selectedLocations: ['loc-001'], // Single location stored as array for API compatibility
-  });
-  // Track selected location as single value for UI (radio button)
-  const [selectedLocation, setSelectedLocation] = useState<string>('loc-001');
   const [isSaving, setIsSaving] = useState(false);
 
   // Site Settings state and sub-tab tracker
@@ -265,14 +249,14 @@ export default function AdministrationPage() {
     plantOpeningTime: '07:00',
     plantClosingTime: '17:00',
     enablePreShipmentScan: false,
-    behindThreshold: 15,
-    criticalThreshold: 30,
-    displayMode: 'FULL',
-    refreshInterval: 30000,
-    orderLookbackHours: 24,
-    allowDuplicates: false,
-    duplicateWindowHours: 24,
-    alertOnDuplicate: true,
+    dockBehindThreshold: 15,
+    dockCriticalThreshold: 30,
+    dockDisplayMode: 'FULL',
+    dockRefreshInterval: 300000,
+    dockOrderLookbackHours: 24,
+    kanbanAllowDuplicates: false,
+    kanbanDuplicateWindowHours: 24,
+    kanbanAlertOnDuplicate: true,
   });
   const [activeSiteSettingsTab, setActiveSiteSettingsTab] = useState<'site' | 'dock' | 'kanban'>('site');
 
@@ -284,22 +268,6 @@ export default function AdministrationPage() {
     fetchToyotaConfigs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Fetch settings when Internal Kanban tab is activated
-  useEffect(() => {
-    if (activeTab === 'internal-kanban') {
-      fetchInternalKanbanSettings();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
-  // Fetch settings when Dock Monitor tab is activated
-  useEffect(() => {
-    if (activeTab === 'dock-monitor') {
-      fetchDockMonitorSettings();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
 
   // Fetch settings when Site Settings tab is activated
   useEffect(() => {
@@ -421,42 +389,6 @@ export default function AdministrationPage() {
     setIsLoadingToyotaConfigs(false);
   };
 
-  // Fetch Internal Kanban settings from API
-  const fetchInternalKanbanSettings = async () => {
-    setIsLoadingKanbanSettings(true);
-    setError(null);
-
-    const result = await getInternalKanbanSettings();
-
-    if (result.success && result.data) {
-      setKanbanSettings(result.data);
-    } else {
-      setError(result.error || 'Failed to load Internal Kanban settings');
-    }
-
-    setIsLoadingKanbanSettings(false);
-  };
-
-  // Fetch Dock Monitor settings from API
-  const fetchDockMonitorSettings = async () => {
-    setIsLoadingDockSettings(true);
-    setError(null);
-
-    const result = await getDockMonitorSettings();
-
-    if (result.success && result.data) {
-      setDockSettings(result.data);
-      // Sync selectedLocation with first item in array (single selection)
-      if (result.data.selectedLocations && result.data.selectedLocations.length > 0) {
-        setSelectedLocation(result.data.selectedLocations[0]);
-      }
-    } else {
-      setError(result.error || 'Failed to load Dock Monitor settings');
-    }
-
-    setIsLoadingDockSettings(false);
-  };
-
   // Fetch Site Settings from API
   const fetchSiteSettings = async () => {
     setIsLoadingSiteSettings(true);
@@ -473,91 +405,14 @@ export default function AdministrationPage() {
     setIsLoadingSiteSettings(false);
   };
 
-  const handleSaveKanbanSettings = async () => {
-    setError(null);
-    setSuccess(null);
-    setIsSaving(true);
-
-    const result = await saveInternalKanbanSettings(kanbanSettings);
-
-    if (result.success) {
-      setSuccess('Internal Kanban settings saved successfully!');
-      setTimeout(() => setSuccess(null), 3000);
-    } else {
-      setError(result.error || 'Failed to save Internal Kanban settings');
-    }
-
-    setIsSaving(false);
-  };
-
-  const handleSaveDockSettings = async () => {
-    setError(null);
-    setSuccess(null);
-
-    // Validation
-    if (dockSettings.behindThreshold <= 0) {
-      setError('Behind threshold must be greater than 0');
-      return;
-    }
-
-    if (dockSettings.criticalThreshold <= dockSettings.behindThreshold) {
-      setError('Critical threshold must be greater than behind threshold');
-      return;
-    }
-
-    if (!selectedLocation) {
-      setError('Please select a location');
-      return;
-    }
-
-    setIsSaving(true);
-
-    // Send selectedLocation as single-item array to match API expectations
-    const settingsToSave = {
-      ...dockSettings,
-      selectedLocations: [selectedLocation],
-    };
-
-    const result = await saveDockMonitorSettings(settingsToSave);
-
-    if (result.success) {
-      setSuccess('Dock monitor settings saved successfully!');
-      // Refresh global location in header
-      await refreshLocation();
-      setTimeout(() => setSuccess(null), 3000);
-    } else {
-      setError(result.error || 'Failed to save Dock Monitor settings');
-    }
-
-    setIsSaving(false);
-  };
-
-  const handleResetDockSettings = () => {
-    setDockSettings({
-      behindThreshold: 15,
-      criticalThreshold: 30,
-      displayMode: 'FULL',
-      selectedLocations: ['loc-001'],
-    });
-    setSelectedLocation('loc-001');
-    setError(null);
-    setSuccess(null);
-  };
-
   // Site Settings save handlers - one for each tab
   const handleSaveSiteSettings = async () => {
     setError(null);
     setSuccess(null);
     setIsSaving(true);
 
-    const settingsToSave: Partial<SiteSettings> = {
-      plantLocation: siteSettings.plantLocation,
-      plantOpeningTime: siteSettings.plantOpeningTime,
-      plantClosingTime: siteSettings.plantClosingTime,
-      enablePreShipmentScan: siteSettings.enablePreShipmentScan,
-    };
-
-    const result = await updateSiteSettings(settingsToSave);
+    // Send ALL settings, not just the current tab's fields
+    const result = await updateSiteSettings(siteSettings);
 
     if (result.success) {
       setSuccess('Site settings saved successfully!');
@@ -575,32 +430,25 @@ export default function AdministrationPage() {
     setSuccess(null);
 
     // Validation
-    if (siteSettings.behindThreshold <= 0) {
+    if (siteSettings.dockBehindThreshold <= 0) {
       setError('Behind threshold must be greater than 0');
       return;
     }
 
-    if (siteSettings.criticalThreshold <= siteSettings.behindThreshold) {
+    if (siteSettings.dockCriticalThreshold <= siteSettings.dockBehindThreshold) {
       setError('Critical threshold must be greater than behind threshold');
       return;
     }
 
-    if (siteSettings.refreshInterval < 1000) {
-      setError('Refresh interval must be at least 1000 milliseconds');
+    if (siteSettings.dockRefreshInterval < 60000) {
+      setError('Refresh interval must be at least 1 minute');
       return;
     }
 
     setIsSaving(true);
 
-    const settingsToSave: Partial<SiteSettings> = {
-      behindThreshold: siteSettings.behindThreshold,
-      criticalThreshold: siteSettings.criticalThreshold,
-      displayMode: siteSettings.displayMode,
-      refreshInterval: siteSettings.refreshInterval,
-      orderLookbackHours: siteSettings.orderLookbackHours,
-    };
-
-    const result = await updateSiteSettings(settingsToSave);
+    // Send ALL settings, not just the current tab's fields
+    const result = await updateSiteSettings(siteSettings);
 
     if (result.success) {
       setSuccess('Dock Monitor settings saved successfully!');
@@ -618,13 +466,8 @@ export default function AdministrationPage() {
     setSuccess(null);
     setIsSaving(true);
 
-    const settingsToSave: Partial<SiteSettings> = {
-      allowDuplicates: siteSettings.allowDuplicates,
-      duplicateWindowHours: siteSettings.duplicateWindowHours,
-      alertOnDuplicate: siteSettings.alertOnDuplicate,
-    };
-
-    const result = await updateSiteSettings(settingsToSave);
+    // Send ALL settings, not just the current tab's fields
+    const result = await updateSiteSettings(siteSettings);
 
     if (result.success) {
       setSuccess('Internal Kanban settings saved successfully!');
@@ -1211,28 +1054,6 @@ export default function AdministrationPage() {
                 Warehouse
               </button>
               <button
-                onClick={() => setActiveTab('internal-kanban')}
-                className={`flex items-center gap-2 px-6 py-3 text-base font-medium whitespace-nowrap border-b-2 transition-colors ${
-                  activeTab === 'internal-kanban'
-                    ? 'border-[#253262] text-[#253262]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <i className="fa-light fa-square-kanban" style={{ fontSize: '20px', color: '#253262' }}></i>
-                Internal Kanban
-              </button>
-              <button
-                onClick={() => setActiveTab('dock-monitor')}
-                className={`flex items-center gap-2 px-6 py-3 text-base font-medium whitespace-nowrap border-b-2 transition-colors ${
-                  activeTab === 'dock-monitor'
-                    ? 'border-[#253262] text-[#253262]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <i className="fa-light fa-desktop" style={{ fontSize: '20px', color: '#253262' }}></i>
-                Dock Monitor
-              </button>
-              <button
                 onClick={() => setActiveTab('toyota-api')}
                 className={`flex items-center gap-2 px-6 py-3 text-base font-medium whitespace-nowrap border-b-2 transition-colors ${
                   activeTab === 'toyota-api'
@@ -1719,376 +1540,6 @@ export default function AdministrationPage() {
           </div>
         )}
 
-        {activeTab === 'internal-kanban' && (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Internal Kanban Settings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoadingKanbanSettings ? (
-                  <div className="flex justify-center items-center py-12">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#253262]"></div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Kanban Duplication Rules Section */}
-                    <div className="space-y-6">
-                      <div>
-                        <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                          Kanban Duplication Rules
-                          <div className="group relative">
-                            <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full cursor-help">i</span>
-                            <div className="absolute left-0 top-6 w-64 p-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-                              Configure how the system handles kanban duplication for internal operations
-                            </div>
-                          </div>
-                        </h3>
-
-                        <div className="space-y-3">
-                          {/* Allow Duplicates Checkbox */}
-                          <label className="flex items-start p-3 border-2 rounded-lg cursor-pointer transition-all hover:border-gray-300 hover:bg-gray-50">
-                            <input
-                              type="checkbox"
-                              checked={kanbanSettings.allowDuplicates}
-                              onChange={(e) => setKanbanSettings({ ...kanbanSettings, allowDuplicates: e.target.checked })}
-                              className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded mt-0.5"
-                            />
-                            <div className="ml-3 flex-1">
-                              <div className="text-sm font-medium text-gray-900">Allow Duplicate Kanbans</div>
-                              <div className="text-sm text-gray-600 mt-1">
-                                Enable creation of duplicate kanbans for the same part within the specified time window.
-                              </div>
-                            </div>
-                          </label>
-
-                          {/* Duplicate Window Hours */}
-                          <div className="p-3 border-2 rounded-lg border-gray-200">
-                            <label className="block text-sm font-medium text-gray-900 mb-2">
-                              Duplicate Window (Hours)
-                            </label>
-                            <div className="flex items-center gap-3">
-                              <Input
-                                type="number"
-                                min="1"
-                                value={kanbanSettings.duplicateWindowHours}
-                                onChange={(e) => setKanbanSettings({ ...kanbanSettings, duplicateWindowHours: parseInt(e.target.value) || 1 })}
-                                placeholder="Enter hours"
-                                className="flex-1 text-sm"
-                              />
-                              <span className="text-sm text-gray-600 font-medium">hours</span>
-                            </div>
-                            <div className="text-sm text-gray-600 mt-2">
-                              Time window to check for duplicate kanbans (e.g., 24 hours = check if duplicate exists within last 24 hours).
-                            </div>
-                          </div>
-
-                          {/* Alert on Duplicate Checkbox */}
-                          <label className="flex items-start p-3 border-2 rounded-lg cursor-pointer transition-all hover:border-gray-300 hover:bg-gray-50">
-                            <input
-                              type="checkbox"
-                              checked={kanbanSettings.alertOnDuplicate}
-                              onChange={(e) => setKanbanSettings({ ...kanbanSettings, alertOnDuplicate: e.target.checked })}
-                              className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded mt-0.5"
-                            />
-                            <div className="ml-3 flex-1">
-                              <div className="text-sm font-medium text-gray-900">Alert on Duplicate Detection</div>
-                              <div className="text-sm text-gray-600 mt-1">
-                                Show an alert/warning when a duplicate kanban is detected during creation.
-                              </div>
-                            </div>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Internal Kanban Action Buttons - OUTSIDE the card */}
-            <div className="flex flex-col sm:flex-row gap-3 justify-end">
-              <Button
-                onClick={handleSaveKanbanSettings}
-                disabled={isSaving}
-                loading={isSaving}
-                variant="success-light"
-                className="w-full sm:w-auto flex-1 sm:flex-none"
-              >
-                <i className="fa-light fa-floppy-disk mr-2"></i>
-                {isSaving ? 'Saving...' : 'Save Settings'}
-              </Button>
-              <Button
-                onClick={() => router.push('/')}
-                variant="primary"
-                className="w-full sm:w-auto flex-1 sm:flex-none"
-              >
-                <i className="fa-light fa-home mr-2"></i>
-                Back to Dashboard
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'dock-monitor' && (
-          <div className="space-y-6">
-            {/* Single Card containing all three sections */}
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              {isLoadingDockSettings ? (
-                <div className="flex justify-center items-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#253262]"></div>
-                </div>
-              ) : (
-                <>
-              {/* Time Thresholds Section */}
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <h3 className="text-base font-semibold text-gray-900">Time Thresholds</h3>
-                  <div className="relative group">
-                    {/* Blue circled i icon */}
-                    <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>
-                      i
-                    </div>
-                    {/* Tooltip */}
-                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-normal pointer-events-none z-10 max-w-xs">
-                      Set warning times for skid build and shipment load operations
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Behind Threshold */}
-                  <div className="p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center gap-2 mb-2">
-                      <label htmlFor="behind-threshold" className="text-sm font-medium text-gray-900">
-                        Behind Threshold
-                      </label>
-                      <div className="relative group">
-                        <div className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '9px', fontWeight: 'bold' }}>
-                          i
-                        </div>
-                        <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-normal pointer-events-none z-10 w-72 max-w-xs">
-                          Set the time in minutes when orders should be marked as behind schedule
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Input
-                        id="behind-threshold"
-                        type="number"
-                        min="1"
-                        value={dockSettings.behindThreshold}
-                        onChange={(e) => setDockSettings({ ...dockSettings, behindThreshold: parseInt(e.target.value) || 0 })}
-                        placeholder="Enter minutes"
-                        className="flex-1 text-sm"
-                      />
-                      <span className="text-sm text-gray-600 font-medium">minutes</span>
-                    </div>
-                  </div>
-
-                  {/* Critical Threshold */}
-                  <div className="p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center gap-2 mb-2">
-                      <label htmlFor="critical-threshold" className="text-sm font-medium text-gray-900">
-                        Critical Threshold
-                      </label>
-                      <div className="relative group">
-                        <div className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '9px', fontWeight: 'bold' }}>
-                          i
-                        </div>
-                        <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-normal pointer-events-none z-10 w-72 max-w-xs">
-                          Set the time in minutes when orders should be marked as critically behind schedule
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Input
-                        id="critical-threshold"
-                        type="number"
-                        min="1"
-                        value={dockSettings.criticalThreshold}
-                        onChange={(e) => setDockSettings({ ...dockSettings, criticalThreshold: parseInt(e.target.value) || 0 })}
-                        placeholder="Enter minutes"
-                        className="flex-1 text-sm"
-                      />
-                      <span className="text-sm text-gray-600 font-medium">minutes</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Divider */}
-              <hr className="my-6 border-gray-200" />
-
-              {/* Display Mode Section */}
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <h3 className="text-base font-semibold text-gray-900">Display Mode</h3>
-                  <div className="relative group">
-                    {/* Blue circled i icon */}
-                    <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>
-                      i
-                    </div>
-                    {/* Tooltip */}
-                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-72 whitespace-normal">
-                      Choose how you want to view order information on the dock monitor display
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Full Version */}
-                  <label
-                    className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-gray-50 transition-colors border border-gray-200"
-                    title="Display all order information including skid build and shipment load times"
-                  >
-                    <input
-                      type="radio"
-                      name="display-mode"
-                      value="FULL"
-                      checked={dockSettings.displayMode === 'FULL'}
-                      onChange={(e) => setDockSettings({ ...dockSettings, displayMode: e.target.value as DisplayMode })}
-                      className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300"
-                    />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900">Full Version</div>
-                    </div>
-                  </label>
-
-                  {/* Pre-shipment Scan Only */}
-                  <label
-                    className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-gray-50 transition-colors border border-gray-200"
-                    title="Display only pre-shipment scan information and status"
-                  >
-                    <input
-                      type="radio"
-                      name="display-mode"
-                      value="SHIPMENT_ONLY"
-                      checked={dockSettings.displayMode === 'SHIPMENT_ONLY'}
-                      onChange={(e) => setDockSettings({ ...dockSettings, displayMode: e.target.value as DisplayMode })}
-                      className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300"
-                    />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900">Pre-shipment Scan Only</div>
-                    </div>
-                  </label>
-
-                  {/* Skid Build Only */}
-                  <label
-                    className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-gray-50 transition-colors border border-gray-200"
-                    title="Display only skid building information and status"
-                  >
-                    <input
-                      type="radio"
-                      name="display-mode"
-                      value="SKID_ONLY"
-                      checked={dockSettings.displayMode === 'SKID_ONLY'}
-                      onChange={(e) => setDockSettings({ ...dockSettings, displayMode: e.target.value as DisplayMode })}
-                      className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300"
-                    />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900">Skid Build Only</div>
-                    </div>
-                  </label>
-
-                  {/* Completion Only */}
-                  <label
-                    className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-gray-50 transition-colors border border-gray-200"
-                    title="Display only completion times and final status"
-                  >
-                    <input
-                      type="radio"
-                      name="display-mode"
-                      value="COMPLETION_ONLY"
-                      checked={dockSettings.displayMode === 'COMPLETION_ONLY'}
-                      onChange={(e) => setDockSettings({ ...dockSettings, displayMode: e.target.value as DisplayMode })}
-                      className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300"
-                    />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900">Completion Only</div>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* Divider */}
-              <hr className="my-6 border-gray-200" />
-
-              {/* Plant/Location Section */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <h3 className="text-base font-semibold text-gray-900">Plant / Location</h3>
-                  <div className="relative group">
-                    {/* Blue circled i icon */}
-                    <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>
-                      i
-                    </div>
-                    {/* Tooltip */}
-                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
-                      Select your current working location (shown in app header)
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {LOCATIONS.map((location) => (
-                    <label
-                      key={location.id}
-                      className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-gray-50 transition-colors border border-gray-200"
-                      title={location.address}
-                    >
-                      <input
-                        type="radio"
-                        name="plant-location"
-                        value={location.id}
-                        checked={selectedLocation === location.id}
-                        onChange={(e) => setSelectedLocation(e.target.value)}
-                        className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300"
-                      />
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-gray-900">{location.name}</div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-                </>
-              )}
-            </div>
-
-            {/* Dock Monitor Action Buttons - All THREE on same line */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-end items-center">
-              <Button
-                onClick={handleSaveDockSettings}
-                disabled={isSaving}
-                loading={isSaving}
-                variant="success-light"
-                className="w-full sm:w-auto flex-1 sm:flex-none"
-              >
-                <i className="fa-light fa-floppy-disk mr-2"></i>
-                {isSaving ? 'Saving...' : 'Save Settings'}
-              </Button>
-              <Button
-                onClick={handleResetDockSettings}
-                variant="primary"
-                disabled={isSaving}
-                className="w-full sm:w-auto flex-1 sm:flex-none"
-              >
-                <i className="fa-light fa-rotate-right mr-2"></i>
-                Reset Defaults
-              </Button>
-              <Button
-                onClick={() => router.push('/')}
-                variant="primary"
-                className="w-full sm:w-auto flex-1 sm:flex-none"
-              >
-                <i className="fa-light fa-home mr-2"></i>
-                Back to Dashboard
-              </Button>
-            </div>
-          </div>
-        )}
-
         {/* Site Settings Tab with 3 Sub-tabs */}
         {activeTab === 'site-settings' && (
           <div className="space-y-6">
@@ -2107,7 +1558,7 @@ export default function AdministrationPage() {
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    <i className="fa-light fa-building" style={{ fontSize: '16px', color: '#253262' }}></i>
+                    <i className="fa-light fa-industry" style={{ fontSize: '16px', color: '#253262' }}></i>
                     Site Settings
                   </button>
                   <button
@@ -2248,94 +1699,119 @@ export default function AdministrationPage() {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* Behind Threshold */}
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Behind Threshold (minutes)
-                              </label>
+                              <div className="flex items-center gap-2 mb-2">
+                                <label className="text-sm font-medium text-gray-700">
+                                  Behind Threshold (minutes)
+                                </label>
+                                <div className="relative group">
+                                  <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                    Time in minutes when orders should be marked as behind schedule
+                                  </div>
+                                </div>
+                              </div>
                               <Input
                                 type="number"
                                 min="1"
-                                value={siteSettings.behindThreshold}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, behindThreshold: parseInt(e.target.value) || 0 })}
+                                value={siteSettings.dockBehindThreshold}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, dockBehindThreshold: parseInt(e.target.value) || 0 })}
                                 placeholder="Enter minutes"
                                 className="w-full"
                               />
-                              <p className="text-xs text-gray-500 mt-1">
-                                Time in minutes when orders should be marked as behind schedule
-                              </p>
                             </div>
 
                             {/* Critical Threshold */}
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Critical Threshold (minutes)
-                              </label>
+                              <div className="flex items-center gap-2 mb-2">
+                                <label className="text-sm font-medium text-gray-700">
+                                  Critical Threshold (minutes)
+                                </label>
+                                <div className="relative group">
+                                  <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                    Time in minutes when orders should be marked as critically behind schedule
+                                  </div>
+                                </div>
+                              </div>
                               <Input
                                 type="number"
                                 min="1"
-                                value={siteSettings.criticalThreshold}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, criticalThreshold: parseInt(e.target.value) || 0 })}
+                                value={siteSettings.dockCriticalThreshold}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, dockCriticalThreshold: parseInt(e.target.value) || 0 })}
                                 placeholder="Enter minutes"
                                 className="w-full"
                               />
-                              <p className="text-xs text-gray-500 mt-1">
-                                Time in minutes when orders should be marked as critically behind schedule
-                              </p>
                             </div>
 
                             {/* Display Mode */}
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Display Mode
-                              </label>
+                              <div className="flex items-center gap-2 mb-2">
+                                <label className="text-sm font-medium text-gray-700">
+                                  Display Mode
+                                </label>
+                                <div className="relative group">
+                                  <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                    Choose how dock monitor information is displayed
+                                  </div>
+                                </div>
+                              </div>
                               <select
-                                value={siteSettings.displayMode}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, displayMode: e.target.value as 'FULL' | 'COMPACT' })}
+                                value={siteSettings.dockDisplayMode}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, dockDisplayMode: e.target.value as 'FULL' | 'COMPACT' })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#253262] focus:border-transparent"
                               >
                                 <option value="FULL">Full</option>
                                 <option value="COMPACT">Compact</option>
                               </select>
-                              <p className="text-xs text-gray-500 mt-1">
-                                Choose how dock monitor information is displayed
-                              </p>
                             </div>
 
                             {/* Refresh Interval */}
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Refresh Interval (milliseconds)
-                              </label>
+                              <div className="flex items-center gap-2 mb-2">
+                                <label className="text-sm font-medium text-gray-700">
+                                  Refresh Interval (minutes)
+                                </label>
+                                <div className="relative group">
+                                  <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                    How often the dock monitor should refresh data (minimum 1 minute)
+                                  </div>
+                                </div>
+                              </div>
                               <Input
                                 type="number"
-                                min="1000"
-                                step="1000"
-                                value={siteSettings.refreshInterval}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, refreshInterval: parseInt(e.target.value) || 30000 })}
-                                placeholder="Enter milliseconds"
+                                min="1"
+                                step="1"
+                                value={siteSettings.dockRefreshInterval / 60000}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, dockRefreshInterval: (parseInt(e.target.value) || 0.5) * 60000 })}
+                                placeholder="Enter minutes"
                                 className="w-full"
                               />
-                              <p className="text-xs text-gray-500 mt-1">
-                                How often the dock monitor should refresh data (minimum 1000ms)
-                              </p>
                             </div>
                           </div>
 
                           {/* Order Lookback Hours - Full width */}
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Order Lookback Hours
-                            </label>
+                            <div className="flex items-center gap-2 mb-2">
+                              <label className="text-sm font-medium text-gray-700">
+                                Order Lookback Hours
+                              </label>
+                              <div className="relative group">
+                                <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                  How many hours back to search for orders in the dock monitor
+                                </div>
+                              </div>
+                            </div>
                             <Input
                               type="number"
                               min="1"
-                              value={siteSettings.orderLookbackHours}
-                              onChange={(e) => setSiteSettings({ ...siteSettings, orderLookbackHours: parseInt(e.target.value) || 24 })}
+                              value={siteSettings.dockOrderLookbackHours}
+                              onChange={(e) => setSiteSettings({ ...siteSettings, dockOrderLookbackHours: parseInt(e.target.value) || 24 })}
                               placeholder="Enter hours"
                               className="w-full"
                             />
-                            <p className="text-xs text-gray-500 mt-1">
-                              How many hours back to search for orders in the dock monitor
-                            </p>
                           </div>
 
                           {/* Save Button */}
@@ -2373,46 +1849,67 @@ export default function AdministrationPage() {
                             <div className="flex items-center gap-3">
                               <input
                                 type="checkbox"
-                                id="allowDuplicates"
-                                checked={siteSettings.allowDuplicates}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, allowDuplicates: e.target.checked })}
+                                id="kanbanAllowDuplicates"
+                                checked={siteSettings.kanbanAllowDuplicates}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, kanbanAllowDuplicates: e.target.checked })}
                                 className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
                               />
-                              <label htmlFor="allowDuplicates" className="text-sm font-medium text-gray-700">
-                                Allow Duplicates
-                              </label>
+                              <div className="flex items-center gap-2">
+                                <label htmlFor="kanbanAllowDuplicates" className="text-sm font-medium text-gray-700">
+                                  Allow Duplicates
+                                </label>
+                                <div className="relative group">
+                                  <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                    When enabled, allows the same order to be scanned multiple times within the duplicate window
+                                  </div>
+                                </div>
+                              </div>
                             </div>
 
                             {/* Duplicate Window Hours */}
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Duplicate Window Hours
-                              </label>
+                              <div className="flex items-center gap-2 mb-2">
+                                <label className="text-sm font-medium text-gray-700">
+                                  Duplicate Window Hours
+                                </label>
+                                <div className="relative group">
+                                  <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                    Time window in hours to check for duplicate scans
+                                  </div>
+                                </div>
+                              </div>
                               <Input
                                 type="number"
                                 min="1"
-                                value={siteSettings.duplicateWindowHours}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, duplicateWindowHours: parseInt(e.target.value) || 24 })}
+                                value={siteSettings.kanbanDuplicateWindowHours}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, kanbanDuplicateWindowHours: parseInt(e.target.value) || 24 })}
                                 placeholder="Enter hours"
                                 className="w-full"
                               />
-                              <p className="text-xs text-gray-500 mt-1">
-                                Time window in hours to check for duplicate scans
-                              </p>
                             </div>
 
                             {/* Alert on Duplicate */}
                             <div className="flex items-center gap-3">
                               <input
                                 type="checkbox"
-                                id="alertOnDuplicate"
-                                checked={siteSettings.alertOnDuplicate}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, alertOnDuplicate: e.target.checked })}
+                                id="kanbanAlertOnDuplicate"
+                                checked={siteSettings.kanbanAlertOnDuplicate}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, kanbanAlertOnDuplicate: e.target.checked })}
                                 className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
                               />
-                              <label htmlFor="alertOnDuplicate" className="text-sm font-medium text-gray-700">
-                                Alert on Duplicate
-                              </label>
+                              <div className="flex items-center gap-2">
+                                <label htmlFor="kanbanAlertOnDuplicate" className="text-sm font-medium text-gray-700">
+                                  Alert on Duplicate
+                                </label>
+                                <div className="relative group">
+                                  <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                    When enabled, shows an alert notification when a duplicate scan is detected
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
 

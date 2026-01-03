@@ -153,7 +153,7 @@ public class UpdateSiteSettingsRequest
     /// Refresh interval in milliseconds (default: 300000 = 5 minutes)
     /// </summary>
     [Required(ErrorMessage = "DockRefreshInterval is required")]
-    [Range(30000, 600000, ErrorMessage = "DockRefreshInterval must be between 30000 and 600000 milliseconds")]
+    [Range(60000, 600000, ErrorMessage = "DockRefreshInterval must be between 1 and 10 minutes")]
     public int DockRefreshInterval { get; set; }
 
     /// <summary>

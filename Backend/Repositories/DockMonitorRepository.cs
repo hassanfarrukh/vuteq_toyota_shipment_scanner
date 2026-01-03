@@ -45,7 +45,7 @@ public class DockMonitorRepository : IDockMonitorRepository
 
     /// <summary>
     /// Get orders from the last N hours with their shipment session details
-    /// Includes orders based on PlannedPickup or CreatedAt within the time window
+    /// Includes orders based on PlannedPickup within the time window
     /// </summary>
     public async Task<List<Order>> GetRecentOrdersWithShipmentsAsync(int hours = 36)
     {
@@ -55,8 +55,8 @@ public class DockMonitorRepository : IDockMonitorRepository
 
             var orders = await _context.Orders
                 .AsNoTracking()
-                .Where(o => o.PlannedPickup >= cutoffTime || o.CreatedAt >= cutoffTime)
-                .OrderBy(o => o.PlannedPickup ?? o.CreatedAt)
+                .Where(o => o.PlannedPickup != null && o.PlannedPickup >= cutoffTime)
+                .OrderBy(o => o.PlannedPickup)
                 .ToListAsync();
 
             _logger.LogInformation("Retrieved {Count} recent orders from last {Hours} hours", orders.Count, hours);

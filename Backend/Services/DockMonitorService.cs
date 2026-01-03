@@ -1,5 +1,5 @@
 // Author: Hassan
-// Date: 2025-12-24
+// Date: 2025-01-03
 // Description: Service for Dock Monitor - handles business logic for real-time dock monitoring
 
 using Backend.Models;
@@ -27,16 +27,16 @@ public interface IDockMonitorService
 public class DockMonitorService : IDockMonitorService
 {
     private readonly IDockMonitorRepository _dockMonitorRepository;
-    private readonly ISettingsRepository _settingsRepository;
+    private readonly ISiteSettingsRepository _siteSettingsRepository;
     private readonly ILogger<DockMonitorService> _logger;
 
     public DockMonitorService(
         IDockMonitorRepository dockMonitorRepository,
-        ISettingsRepository settingsRepository,
+        ISiteSettingsRepository siteSettingsRepository,
         ILogger<DockMonitorService> logger)
     {
         _dockMonitorRepository = dockMonitorRepository;
-        _settingsRepository = settingsRepository;
+        _siteSettingsRepository = siteSettingsRepository;
         _logger = logger;
     }
 
@@ -47,15 +47,16 @@ public class DockMonitorService : IDockMonitorService
     {
         try
         {
-            // Get dock monitor settings
-            var settings = await _settingsRepository.GetDockMonitorSettingsAsync();
-            var settingsDto = MapToDockMonitorSettingsDto(settings);
+            // Get site settings (contains dock monitor settings)
+            var siteSettings = await _siteSettingsRepository.GetAsync();
+            var settingsDto = MapToDockMonitorSettingsDto(siteSettings);
 
-            // Get orders from last 36 hours (1.5 days)
-            var orders = await _dockMonitorRepository.GetRecentOrdersWithShipmentsAsync(36);
+            // Get orders based on configured lookback hours
+            var lookbackHours = siteSettings?.DockOrderLookbackHours ?? 36;
+            var orders = await _dockMonitorRepository.GetRecentOrdersWithShipmentsAsync(lookbackHours);
 
             // Get shipment sessions
-            var sessions = await _dockMonitorRepository.GetRecentShipmentSessionsAsync(36);
+            var sessions = await _dockMonitorRepository.GetRecentShipmentSessionsAsync(lookbackHours);
 
             // Get exception types for all orders
             var orderIds = orders.Select(o => o.OrderId).ToList();
@@ -332,9 +333,9 @@ public class DockMonitorService : IDockMonitorService
     }
 
     /// <summary>
-    /// Map DockMonitorSetting entity to DTO
+    /// Map SiteSettings entity to DockMonitorSettingsDto
     /// </summary>
-    private DockMonitorSettingsDto MapToDockMonitorSettingsDto(DockMonitorSetting? settings)
+    private DockMonitorSettingsDto MapToDockMonitorSettingsDto(SiteSettings? settings)
     {
         if (settings == null)
         {
@@ -352,29 +353,22 @@ public class DockMonitorService : IDockMonitorService
             };
         }
 
+        // SelectedLocations are no longer stored as JSON, use PlantLocation instead
         List<string> locations = new List<string>();
-        if (!string.IsNullOrEmpty(settings.SelectedLocations))
+        if (!string.IsNullOrEmpty(settings.PlantLocation))
         {
-            try
-            {
-                locations = JsonSerializer.Deserialize<List<string>>(settings.SelectedLocations)
-                    ?? new List<string>();
-            }
-            catch
-            {
-                locations = new List<string>();
-            }
+            locations.Add(settings.PlantLocation);
         }
 
         return new DockMonitorSettingsDto
         {
             SettingId = settings.SettingId,
-            UserId = settings.UserId,
-            BehindThreshold = settings.BehindThreshold,
-            CriticalThreshold = settings.CriticalThreshold,
-            DisplayMode = settings.DisplayMode,
+            UserId = null, // Site settings are global, not user-specific
+            BehindThreshold = settings.DockBehindThreshold,
+            CriticalThreshold = settings.DockCriticalThreshold,
+            DisplayMode = settings.DockDisplayMode,
             SelectedLocations = locations,
-            RefreshInterval = settings.RefreshInterval,
+            RefreshInterval = settings.DockRefreshInterval,
             ModifiedAt = settings.UpdatedAt ?? settings.CreatedAt
         };
     }

@@ -126,7 +126,6 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IOfficeService, OfficeService>();
 builder.Services.AddScoped<IWarehouseService, WarehouseService>();
 builder.Services.AddScoped<IUserService, UserService>();
-builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<ISiteSettingsService, SiteSettingsService>();
 
 // Excel Parser Service (PDF support removed - Excel only)

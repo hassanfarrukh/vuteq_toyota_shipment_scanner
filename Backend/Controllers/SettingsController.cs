@@ -1,5 +1,5 @@
 // Author: Hassan
-// Date: 2025-12-01
+// Date: 2025-01-03
 // Description: Controller for Settings management - provides endpoints for Internal Kanban and Dock Monitor settings
 
 using Backend.Models;
@@ -20,12 +20,12 @@ namespace Backend.Controllers;
 [Produces("application/json")]
 public class SettingsController : ControllerBase
 {
-    private readonly ISettingsService _settingsService;
+    private readonly ISiteSettingsService _siteSettingsService;
     private readonly ILogger<SettingsController> _logger;
 
-    public SettingsController(ISettingsService settingsService, ILogger<SettingsController> logger)
+    public SettingsController(ISiteSettingsService siteSettingsService, ILogger<SettingsController> logger)
     {
-        _settingsService = settingsService;
+        _siteSettingsService = siteSettingsService;
         _logger = logger;
     }
 
@@ -46,12 +46,27 @@ public class SettingsController : ControllerBase
     {
         _logger.LogInformation("Getting internal kanban settings");
 
-        var response = await _settingsService.GetInternalKanbanSettingsAsync();
+        var siteSettingsResponse = await _siteSettingsService.GetSiteSettingsAsync();
 
-        if (!response.Success)
+        if (!siteSettingsResponse.Success || siteSettingsResponse.Data == null)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, response);
+            return StatusCode(StatusCodes.Status500InternalServerError, siteSettingsResponse);
         }
+
+        // Map SiteSettings to InternalKanbanSettingsDto
+        var kanbanSettings = new InternalKanbanSettingsDto
+        {
+            SettingId = siteSettingsResponse.Data.SettingId,
+            AllowDuplicates = siteSettingsResponse.Data.KanbanAllowDuplicates,
+            DuplicateWindowHours = siteSettingsResponse.Data.KanbanDuplicateWindowHours,
+            AlertOnDuplicate = siteSettingsResponse.Data.KanbanAlertOnDuplicate,
+            ModifiedAt = siteSettingsResponse.Data.ModifiedAt
+        };
+
+        var response = ApiResponse<InternalKanbanSettingsDto>.SuccessResponse(
+            kanbanSettings,
+            "Internal kanban settings retrieved successfully"
+        );
 
         return Ok(response);
     }
@@ -82,12 +97,57 @@ public class SettingsController : ControllerBase
 
         _logger.LogInformation("Saving internal kanban settings");
 
-        var response = await _settingsService.SaveInternalKanbanSettingsAsync(request);
-
-        if (!response.Success)
+        // First, get current settings
+        var currentSettingsResponse = await _siteSettingsService.GetSiteSettingsAsync();
+        if (!currentSettingsResponse.Success || currentSettingsResponse.Data == null)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, response);
+            return StatusCode(StatusCodes.Status500InternalServerError, currentSettingsResponse);
         }
+
+        // Create update request with kanban settings changed
+        var updateRequest = new UpdateSiteSettingsRequest
+        {
+            // Site settings - keep existing values
+            PlantLocation = currentSettingsResponse.Data.PlantLocation,
+            PlantOpeningTime = currentSettingsResponse.Data.PlantOpeningTime,
+            PlantClosingTime = currentSettingsResponse.Data.PlantClosingTime,
+            EnablePreShipmentScan = currentSettingsResponse.Data.EnablePreShipmentScan,
+
+            // Dock settings - keep existing values
+            DockBehindThreshold = currentSettingsResponse.Data.DockBehindThreshold,
+            DockCriticalThreshold = currentSettingsResponse.Data.DockCriticalThreshold,
+            DockDisplayMode = currentSettingsResponse.Data.DockDisplayMode,
+            DockRefreshInterval = currentSettingsResponse.Data.DockRefreshInterval,
+            DockOrderLookbackHours = currentSettingsResponse.Data.DockOrderLookbackHours,
+
+            // Kanban settings - update with new values
+            KanbanAllowDuplicates = request.AllowDuplicates,
+            KanbanDuplicateWindowHours = request.DuplicateWindowHours,
+            KanbanAlertOnDuplicate = request.AlertOnDuplicate
+        };
+
+        var userId = GetCurrentUserId();
+        var updateResponse = await _siteSettingsService.UpdateSiteSettingsAsync(updateRequest, userId);
+
+        if (!updateResponse.Success || updateResponse.Data == null)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, updateResponse);
+        }
+
+        // Map response back to InternalKanbanSettingsDto
+        var kanbanSettings = new InternalKanbanSettingsDto
+        {
+            SettingId = updateResponse.Data.SettingId,
+            AllowDuplicates = updateResponse.Data.KanbanAllowDuplicates,
+            DuplicateWindowHours = updateResponse.Data.KanbanDuplicateWindowHours,
+            AlertOnDuplicate = updateResponse.Data.KanbanAlertOnDuplicate,
+            ModifiedAt = updateResponse.Data.ModifiedAt
+        };
+
+        var response = ApiResponse<InternalKanbanSettingsDto>.SuccessResponse(
+            kanbanSettings,
+            "Internal kanban settings saved successfully"
+        );
 
         return Ok(response);
     }
@@ -111,12 +171,30 @@ public class SettingsController : ControllerBase
     {
         _logger.LogInformation("Getting global dock monitor settings");
 
-        var response = await _settingsService.GetDockMonitorSettingsAsync();
+        var siteSettingsResponse = await _siteSettingsService.GetSiteSettingsAsync();
 
-        if (!response.Success)
+        if (!siteSettingsResponse.Success || siteSettingsResponse.Data == null)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, response);
+            return StatusCode(StatusCodes.Status500InternalServerError, siteSettingsResponse);
         }
+
+        // Map SiteSettings to DockMonitorSettingsDto
+        var dockSettings = new DockMonitorSettingsDto
+        {
+            SettingId = siteSettingsResponse.Data.SettingId,
+            UserId = null, // Global settings have no specific user
+            BehindThreshold = siteSettingsResponse.Data.DockBehindThreshold,
+            CriticalThreshold = siteSettingsResponse.Data.DockCriticalThreshold,
+            DisplayMode = siteSettingsResponse.Data.DockDisplayMode,
+            SelectedLocations = new List<string>(), // This is now stored in PlantLocation
+            RefreshInterval = siteSettingsResponse.Data.DockRefreshInterval,
+            ModifiedAt = siteSettingsResponse.Data.ModifiedAt
+        };
+
+        var response = ApiResponse<DockMonitorSettingsDto>.SuccessResponse(
+            dockSettings,
+            "Dock monitor settings retrieved successfully"
+        );
 
         return Ok(response);
     }
@@ -147,16 +225,64 @@ public class SettingsController : ControllerBase
 
         _logger.LogInformation("Saving global dock monitor settings");
 
-        var response = await _settingsService.SaveDockMonitorSettingsAsync(request);
-
-        if (!response.Success)
+        // First, get current settings
+        var currentSettingsResponse = await _siteSettingsService.GetSiteSettingsAsync();
+        if (!currentSettingsResponse.Success || currentSettingsResponse.Data == null)
         {
-            if (response.Message.Contains("Invalid thresholds"))
-            {
-                return BadRequest(response);
-            }
-            return StatusCode(StatusCodes.Status500InternalServerError, response);
+            return StatusCode(StatusCodes.Status500InternalServerError, currentSettingsResponse);
         }
+
+        // Create update request with dock settings changed
+        var updateRequest = new UpdateSiteSettingsRequest
+        {
+            // Site settings - keep existing values
+            PlantLocation = currentSettingsResponse.Data.PlantLocation,
+            PlantOpeningTime = currentSettingsResponse.Data.PlantOpeningTime,
+            PlantClosingTime = currentSettingsResponse.Data.PlantClosingTime,
+            EnablePreShipmentScan = currentSettingsResponse.Data.EnablePreShipmentScan,
+
+            // Dock settings - update with new values
+            DockBehindThreshold = request.BehindThreshold,
+            DockCriticalThreshold = request.CriticalThreshold,
+            DockDisplayMode = request.DisplayMode,
+            DockRefreshInterval = currentSettingsResponse.Data.DockRefreshInterval, // Not in request
+            DockOrderLookbackHours = currentSettingsResponse.Data.DockOrderLookbackHours, // Not in request
+
+            // Kanban settings - keep existing values
+            KanbanAllowDuplicates = currentSettingsResponse.Data.KanbanAllowDuplicates,
+            KanbanDuplicateWindowHours = currentSettingsResponse.Data.KanbanDuplicateWindowHours,
+            KanbanAlertOnDuplicate = currentSettingsResponse.Data.KanbanAlertOnDuplicate
+        };
+
+        var userId = GetCurrentUserId();
+        var updateResponse = await _siteSettingsService.UpdateSiteSettingsAsync(updateRequest, userId);
+
+        if (!updateResponse.Success || updateResponse.Data == null)
+        {
+            if (updateResponse.Message.Contains("Invalid thresholds"))
+            {
+                return BadRequest(updateResponse);
+            }
+            return StatusCode(StatusCodes.Status500InternalServerError, updateResponse);
+        }
+
+        // Map response back to DockMonitorSettingsDto
+        var dockSettings = new DockMonitorSettingsDto
+        {
+            SettingId = updateResponse.Data.SettingId,
+            UserId = null, // Global settings have no specific user
+            BehindThreshold = updateResponse.Data.DockBehindThreshold,
+            CriticalThreshold = updateResponse.Data.DockCriticalThreshold,
+            DisplayMode = updateResponse.Data.DockDisplayMode,
+            SelectedLocations = request.SelectedLocations,
+            RefreshInterval = updateResponse.Data.DockRefreshInterval,
+            ModifiedAt = updateResponse.Data.ModifiedAt
+        };
+
+        var response = ApiResponse<DockMonitorSettingsDto>.SuccessResponse(
+            dockSettings,
+            "Dock monitor settings saved successfully"
+        );
 
         return Ok(response);
     }
