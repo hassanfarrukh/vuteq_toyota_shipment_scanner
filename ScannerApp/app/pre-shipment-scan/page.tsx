@@ -1506,7 +1506,7 @@ export default function PreShipmentScanPage() {
                               <p className="text-xs text-gray-600">Parts: {skid.partCount}</p>
                               <p className="text-xs text-gray-500 mt-1">
                                 <i className="fa fa-clock mr-1"></i>
-                                {new Date(skid.timestamp).toLocaleTimeString()}
+                                {new Date(skid.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
                               </p>
                             </div>
                             <div className="flex flex-col items-end gap-1">

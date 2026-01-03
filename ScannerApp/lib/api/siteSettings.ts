@@ -73,6 +73,32 @@ export async function getSiteSettings(): Promise<{
 }
 
 /**
+ * Helper function to format time for backend TimeOnly deserialization
+ * Ensures time is in "HH:mm:ss" format
+ * - If time is already "HH:mm:ss", returns as-is
+ * - If time is "HH:mm", appends ":00"
+ * - If null/undefined, returns null
+ */
+function formatTimeForBackend(time: string | null | undefined): string | null {
+  if (!time) return null;
+
+  const parts = time.split(':');
+
+  // If already has seconds (HH:mm:ss), return as-is
+  if (parts.length === 3) {
+    return time;
+  }
+
+  // If only HH:mm format, append :00
+  if (parts.length === 2) {
+    return `${time}:00`;
+  }
+
+  // Invalid format, return as-is and let backend validation handle it
+  return time;
+}
+
+/**
  * Update Site Settings
  * Note: Backend requires ALL fields, not partial updates
  */
@@ -88,8 +114,8 @@ export async function updateSiteSettings(
     // Convert "HH:mm" to "HH:mm:ss" format which ASP.NET Core can parse as TimeOnly
     const payload = {
       ...settings,
-      plantOpeningTime: settings.plantOpeningTime ? `${settings.plantOpeningTime}:00` : null,
-      plantClosingTime: settings.plantClosingTime ? `${settings.plantClosingTime}:00` : null,
+      plantOpeningTime: formatTimeForBackend(settings.plantOpeningTime),
+      plantClosingTime: formatTimeForBackend(settings.plantClosingTime),
     };
 
     const response = await apiClient.put<ApiResponse<SiteSettings>>(

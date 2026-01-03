@@ -463,4 +463,10 @@ public class ValidateOrderResponseDto
     /// Toyota confirmation number if skid-build was confirmed
     /// </summary>
     public string? ToyotaConfirmationNumber { get; set; }
+
+    /// <summary>
+    /// Toyota SHIPMENT confirmation number (set when shipment load is completed)
+    /// This is different from ToyotaConfirmationNumber which is for Skid Build
+    /// </summary>
+    public string? ToyotaShipmentConfirmationNumber { get; set; }
 }

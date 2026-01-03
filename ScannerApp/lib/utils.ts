@@ -28,7 +28,7 @@ export function formatDate(date: string | Date, format: 'short' | 'long' | 'time
     case 'long':
       return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     case 'time':
-      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     default:
       return d.toISOString();
   }

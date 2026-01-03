@@ -21,6 +21,7 @@
  * Updated: 2025-12-20 - Added "Scanned Orders" section mirroring planned structure with order grouping
  * Updated: 2025-12-22 - CRITICAL FIX: Auto-populate trailer data when session is resumed (isResumed=true)
  * Updated: 2025-12-22 - CRITICAL FIX: Restore scanned items when session is resumed (check order.isScanned flag)
+ * Updated: 2026-01-04 - BUG FIX: Block already-shipped orders on Screen 1 with Toyota confirmation number
  *
  * SCREEN FLOW:
  * 1. Scan Pickup Route QR → Parse and store → Continue to Screen 2
@@ -174,6 +175,11 @@ export default function ShipmentLoadV2Page() {
   // Session data from API
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [actualSkidCount, setActualSkidCount] = useState<number>(0);
+  const [orderValidationData, setOrderValidationData] = useState<{
+    toyotaConfirmationNumber?: string;
+    toyotaShipmentConfirmationNumber?: string;
+    status?: string;
+  } | null>(null);
 
   // Screen 2: Trailer Information
   const [trailerData, setTrailerData] = useState<TrailerData>({
@@ -390,15 +396,34 @@ export default function ShipmentLoadV2Page() {
         return;
       }
 
+      // Check if order is already shipped
+      // Author: Hassan, Date: 2026-01-04
+      // FIX: Show the hidden view with info but prevent continuation
+      if (orderData.status === 'Shipped') {
+        setError(`Order ${parsedData.orderNumber} has already been shipped. Cannot load again.`);
+        // Don't return - continue to set pickupRouteData so the view shows
+      }
+
       console.log('Order validated successfully!');
       console.log('Actual skid count:', orderData.skidCount);
 
       // Store actual skid count
       setActualSkidCount(orderData.skidCount);
 
+      // Store order validation data (Toyota confirmation numbers)
+      setOrderValidationData({
+        toyotaConfirmationNumber: orderData.toyotaConfirmationNumber,
+        toyotaShipmentConfirmationNumber: orderData.toyotaShipmentConfirmationNumber,
+        status: orderData.status,
+      });
+
       // Successfully parsed and validated - new session
       setPickupRouteData(parsedData);
-      setError(null);
+
+      // Only clear error if not shipped (shipped orders need to keep their error message)
+      if (orderData.status !== 'Shipped') {
+        setError(null);
+      }
     } catch (err) {
       console.error('Error validating order:', err);
       setError('Failed to validate order. Please try again.');
@@ -613,7 +638,7 @@ export default function ShipmentLoadV2Page() {
       });
 
       if (!response.success) {
-        setError(response.message || 'Failed to save trailer information');
+        setError(response.error || 'Failed to save trailer information');
         setLoading(false);
         return;
       }
@@ -781,7 +806,7 @@ export default function ShipmentLoadV2Page() {
       console.log('======================');
 
       if (!response.success || !response.data) {
-        setError(response.message || 'Failed to validate skid');
+        setError(response.error || 'Failed to validate skid');
         setLoading(false);
         return;
       }
@@ -1055,7 +1080,7 @@ export default function ShipmentLoadV2Page() {
       });
 
       if (!response.success || !response.data) {
-        setError(response.message || 'Failed to complete shipment');
+        setError(response.error || 'Failed to complete shipment');
         setLoading(false);
         return;
       }
@@ -1102,6 +1127,7 @@ export default function ShipmentLoadV2Page() {
     setExceptions([]);
     setConfirmationNumber('');
     setRackExceptionEnabled(false);
+    setOrderValidationData(null);
     setError(null);
   };
 
@@ -1228,21 +1254,36 @@ export default function ShipmentLoadV2Page() {
                           <span className="text-gray-600">Supplier Code:</span>
                           <p className="font-mono font-bold text-gray-900">{pickupRouteData.supplierCode}</p>
                         </div>
+
+                        {orderValidationData?.toyotaConfirmationNumber && (
+                          <div>
+                            <span className="text-gray-600">Toyota Confirmation:</span>
+                            <p className="font-mono font-bold text-gray-900">{orderValidationData.toyotaConfirmationNumber}</p>
+                          </div>
+                        )}
+                        {orderValidationData?.status === 'Shipped' && orderValidationData?.toyotaShipmentConfirmationNumber && (
+                          <div>
+                            <span className="text-gray-600">Toyota Shipment:</span>
+                            <p className="font-mono font-bold text-gray-900">{orderValidationData.toyotaShipmentConfirmationNumber}</p>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Continue Button */}
-                      <div className="mt-3">
-                        <Button
-                          onClick={handlePickupRouteContinue}
-                          variant="success-light"
-                          fullWidth
-                          loading={loading}
-                          disabled={loading}
-                        >
-                          <i className="fa fa-arrow-right mr-2"></i>
-                          Continue to Trailer Information
-                        </Button>
-                      </div>
+                      {/* Continue Button - hide if already shipped */}
+                      {orderValidationData?.status !== 'Shipped' && (
+                        <div className="mt-3">
+                          <Button
+                            onClick={handlePickupRouteContinue}
+                            variant="success-light"
+                            fullWidth
+                            loading={loading}
+                            disabled={loading}
+                          >
+                            <i className="fa fa-arrow-right mr-2"></i>
+                            Continue to Trailer Information
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1639,7 +1680,7 @@ export default function ShipmentLoadV2Page() {
                                           </p>
                                           <p className="text-xs text-gray-500 mt-1">
                                             <i className="fa fa-clock mr-1"></i>
-                                            {new Date(skid.timestamp).toLocaleTimeString()}
+                                            {new Date(skid.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                           </p>
                                         </div>
                                         <span className="text-xs font-medium text-success-700">#{idx + 1}</span>
@@ -1861,8 +1902,8 @@ export default function ShipmentLoadV2Page() {
         </div>
       </div>
 
-      {/* FAB Menu (Bottom Left) - Visible on Screens 1-3 */}
-      {currentScreen >= 1 && currentScreen <= 3 && (
+      {/* FAB Menu (Bottom Left) - Visible on Screens 2-3 */}
+      {currentScreen >= 2 && currentScreen <= 3 && (
         <div className="fixed bottom-20 left-4 z-50">
           {/* FAB Toggle Button */}
           <button

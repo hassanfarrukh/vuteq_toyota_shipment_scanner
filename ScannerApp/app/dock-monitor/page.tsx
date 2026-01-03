@@ -91,7 +91,7 @@ export default function DockMonitorPage() {
   // Update subtitle dynamically for Header
   useEffect(() => {
     const updateSubtitle = () => {
-      const timeStr = lastRefreshed.toLocaleTimeString();
+      const timeStr = lastRefreshed.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
       const countdownStr = formatCountdown(countdown);
       setSubtitle(`Last updated: ${timeStr} • Next: ${countdownStr}`);
     };

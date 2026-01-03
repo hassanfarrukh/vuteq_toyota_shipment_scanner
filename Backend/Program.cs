@@ -14,6 +14,8 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 // Configure Serilog from appsettings.json
 Log.Logger = new LoggerConfiguration()
@@ -50,8 +52,13 @@ builder.Services.AddDbContext<VuteqDbContext>(options =>
 // Add configuration for JWT
 builder.Services.Configure<JwtConfiguration>(builder.Configuration.GetSection("Jwt"));
 
-// Add controllers
-builder.Services.AddControllers();
+// Add controllers with JSON options for TimeOnly support
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new TimeOnlyJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new NullableTimeOnlyJsonConverter());
+    });
 
 // Add CORS policy for Next.js frontend
 builder.Services.AddCors(options =>
@@ -286,4 +293,46 @@ finally
     Log.Information("VUTEQ Scanner API shutting down");
     Log.Information("========================================");
     Log.CloseAndFlush();
+}
+
+// ============================
+// Custom JSON Converters for TimeOnly
+// ============================
+
+/// <summary>
+/// JSON converter for TimeOnly type - serializes to/from HH:mm:ss format
+/// </summary>
+public class TimeOnlyJsonConverter : JsonConverter<TimeOnly>
+{
+    public override TimeOnly Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var value = reader.GetString();
+        return TimeOnly.Parse(value!);
+    }
+
+    public override void Write(Utf8JsonWriter writer, TimeOnly value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.ToString("HH:mm:ss"));
+    }
+}
+
+/// <summary>
+/// JSON converter for nullable TimeOnly type - serializes to/from HH:mm:ss format or null
+/// </summary>
+public class NullableTimeOnlyJsonConverter : JsonConverter<TimeOnly?>
+{
+    public override TimeOnly? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var value = reader.GetString();
+        if (string.IsNullOrEmpty(value)) return null;
+        return TimeOnly.Parse(value);
+    }
+
+    public override void Write(Utf8JsonWriter writer, TimeOnly? value, JsonSerializerOptions options)
+    {
+        if (value.HasValue)
+            writer.WriteStringValue(value.Value.ToString("HH:mm:ss"));
+        else
+            writer.WriteNullValue();
+    }
 }

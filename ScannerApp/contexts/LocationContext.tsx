@@ -2,21 +2,22 @@
  * Location Context
  * Author: Hassan
  * Date: 2025-12-01
+ * Updated: 2026-01-03 - Changed to use getSiteSettings API instead of getDockMonitorSettings (Hassan)
  *
  * Manages the global location/plant setting for the application.
- * This location is determined by the Dock Monitor settings (single location selection).
+ * This location is determined by the Site Settings (plantLocation).
  * It is displayed in the header and used throughout the app.
  */
 
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { getDockMonitorSettings, DockMonitorSettings } from '@/lib/api/settings';
+import { getSiteSettings } from '@/lib/api/siteSettings';
 import { clientLogger } from '@/lib/logger';
-import { LOCATIONS } from '@/lib/constants';
 
 interface LocationContextType {
   location: string;
+  enablePreShipmentScan: boolean;
   isLoading: boolean;
   error: string | null;
   refreshLocation: () => Promise<void>;
@@ -26,6 +27,7 @@ const LocationContext = createContext<LocationContextType | undefined>(undefined
 
 export function LocationProvider({ children }: { children: ReactNode }) {
   const [location, setLocation] = useState<string>('INDIANA'); // Default fallback
+  const [enablePreShipmentScan, setEnablePreShipmentScan] = useState<boolean>(true); // Default true
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,27 +37,30 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
 
-      clientLogger.info('LocationContext', 'Fetching global location from Dock Monitor settings');
+      clientLogger.info('LocationContext', 'Fetching global location from Site Settings');
 
-      const result = await getDockMonitorSettings();
+      const result = await getSiteSettings();
 
       if (result.success && result.data) {
-        // Get the first selected location (should only be one)
-        const selectedLocationId = result.data.selectedLocations?.[0];
+        const plantLocation = result.data.plantLocation;
 
-        if (selectedLocationId) {
-          // Convert location ID to location NAME (e.g., "loc-002" -> "MICHIGAN")
-          const locationName = LOCATIONS.find(l => l.id === selectedLocationId)?.name || selectedLocationId;
-          setLocation(locationName);
+        if (plantLocation) {
+          // plantLocation is already the location name string (e.g., "MICHIGAN")
+          setLocation(plantLocation);
           clientLogger.info('LocationContext', 'Global location updated', {
-            locationId: selectedLocationId,
-            locationName
+            plantLocation
           });
         } else {
           // No location set, use default
           setLocation('NO LOCATION');
-          clientLogger.warn('LocationContext', 'No location selected in Dock Monitor settings');
+          clientLogger.warn('LocationContext', 'No plant location set in Site Settings');
         }
+
+        // Also set the PreShipment scan flag from the same API call
+        setEnablePreShipmentScan(result.data.enablePreShipmentScan);
+        clientLogger.info('LocationContext', 'PreShipment scan flag updated', {
+          enablePreShipmentScan: result.data.enablePreShipmentScan
+        });
       } else {
         setError(result.error || 'Failed to fetch location');
         clientLogger.error('LocationContext', 'Failed to fetch location', { error: result.error });
@@ -76,6 +81,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
 
   const value = {
     location,
+    enablePreShipmentScan,
     isLoading,
     error,
     refreshLocation,

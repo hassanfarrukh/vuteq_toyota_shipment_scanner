@@ -25,12 +25,12 @@ public class SiteSettingsDto
     public string? PlantLocation { get; set; }
 
     /// <summary>
-    /// Plant opening time (e.g., 06:00)
+    /// Plant opening time (e.g., 07:00:00)
     /// </summary>
     public TimeOnly? PlantOpeningTime { get; set; }
 
     /// <summary>
-    /// Plant closing time (e.g., 22:00)
+    /// Plant closing time (e.g., 17:00:00)
     /// </summary>
     public TimeOnly? PlantClosingTime { get; set; }
 
@@ -109,12 +109,12 @@ public class UpdateSiteSettingsRequest
     public string? PlantLocation { get; set; }
 
     /// <summary>
-    /// Plant opening time (e.g., 06:00)
+    /// Plant opening time (e.g., 07:00:00)
     /// </summary>
     public TimeOnly? PlantOpeningTime { get; set; }
 
     /// <summary>
-    /// Plant closing time (e.g., 22:00)
+    /// Plant closing time (e.g., 17:00:00)
     /// </summary>
     public TimeOnly? PlantClosingTime { get; set; }
 

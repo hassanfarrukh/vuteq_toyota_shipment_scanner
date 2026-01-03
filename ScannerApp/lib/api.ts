@@ -1514,6 +1514,7 @@ export interface ValidateOrderResponse {
   skidBuildComplete: boolean;
   skidCount: number;
   toyotaConfirmationNumber?: string;
+  toyotaShipmentConfirmationNumber?: string;
 }
 
 // Validate order for shipment load (get skid count without starting session)

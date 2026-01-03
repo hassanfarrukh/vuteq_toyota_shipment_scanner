@@ -4,6 +4,7 @@
 // Updated: 2025-12-22 - Fixed IsScanned logic to only check current session (removed status check)
 // Updated: 2025-12-24 - Fixed skid build exceptions not being included in Toyota shipment load payload
 // Updated: 2025-12-24 - Fixed exception code mapping: Skid Build code 12 -> Shipment Load code 24 at trailer level
+// Updated: 2026-01-04 - Fixed Toyota duplicate skid issue: Group by (PalletizationCode + RawSkidId) to send one skid per manifest
 // Description: Service for Shipment Load operations - Toyota SCS integration with session management
 
 using Backend.Models;
@@ -703,7 +704,8 @@ public class ShipmentLoadService : IShipmentLoadService
                 Status = order.Status.ToString(),
                 SkidBuildComplete = skidBuildComplete,
                 SkidCount = skidCount,
-                ToyotaConfirmationNumber = order.ToyotaSkidBuildConfirmationNumber
+                ToyotaConfirmationNumber = order.ToyotaSkidBuildConfirmationNumber,
+                ToyotaShipmentConfirmationNumber = order.ToyotaShipmentConfirmationNumber
             };
 
             _logger.LogInformation(
@@ -1020,9 +1022,17 @@ public class ShipmentLoadService : IShipmentLoadService
 
             var orderSupplierCode = order.SupplierCode!;
 
+            // Group skids by unique (PalletizationCode + RawSkidId) to avoid duplicates
+            // Toyota API SKID keyObject: Order + Supplier + Plant + Dock + Palletization + Skid
+            // Multiple kanbans per manifest should result in ONE skid entry, not multiple
+            var uniqueSkids = skidScans
+                .GroupBy(s => new { s.PalletizationCode, s.RawSkidId })
+                .Select(g => g.First())
+                .ToList();
+
             _logger.LogInformation(
-                "Building Toyota payload - ORDER Level: Order={Order}, Supplier={OrderSupplier}, Plant={Plant}, Dock={Dock}, Skids={SkidCount}, SkidBuildExceptions={ExceptionCount}",
-                order.RealOrderNumber, orderSupplierCode, order.PlantCode, order.DockCode, skidScans.Count, skidBuildExceptions.Count);
+                "Building Toyota payload - ORDER Level: Order={Order}, Supplier={OrderSupplier}, Plant={Plant}, Dock={Dock}, Skids: {TotalScans} kanban scans -> {UniqueSkids} unique skids, SkidBuildExceptions={ExceptionCount}",
+                order.RealOrderNumber, orderSupplierCode, order.PlantCode, order.DockCode, skidScans.Count, uniqueSkids.Count, skidBuildExceptions.Count);
 
             var toyotaOrder = new ToyotaShipmentOrder
             {
@@ -1031,7 +1041,7 @@ public class ShipmentLoadService : IShipmentLoadService
                 Plant = order.PlantCode!,
                 Dock = order.DockCode,
                 PickUp = session.PickupDateTime?.ToString("yyyy-MM-ddTHH:mm") ?? DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm"),
-                Skids = skidScans.Select(scan => new ToyotaShipmentSkid
+                Skids = uniqueSkids.Select(scan => new ToyotaShipmentSkid
                 {
                     SkidId = scan.RawSkidId!, // Use RawSkidId which includes side (e.g., "001A")
                     Palletization = scan.PalletizationCode!,

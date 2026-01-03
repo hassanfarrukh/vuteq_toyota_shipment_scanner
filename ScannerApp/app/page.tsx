@@ -11,6 +11,7 @@
  * Updated: 2025-10-29 - Converted dashboard icons from fa-duotone to fa-light with navy blue color (Hassan)
  * Updated: 2025-11-05 - Added upload and file-arrow-up icon mappings for Upload Order Data tile (Hassan)
  * Updated: 2025-11-05 - Reduced vertical spacing to eliminate scrolling: space-y reduced, gap-y separated, py and min-h reduced (Hassan)
+ * Updated: 2026-01-03 - Added Site Settings check to conditionally hide Pre-shipment Scan tile based on enablePreShipmentScan flag (Hassan)
  *
  * Main dashboard with feature tiles - simple and clean design
  */
@@ -21,14 +22,17 @@ import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import { DASHBOARD_TILES } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocation } from '@/contexts/LocationContext';
 import VUTEQStaticBackground from '@/components/layout/VUTEQStaticBackground';
 export default function HomePage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { enablePreShipmentScan } = useLocation(); // Get from context - no extra API call needed
 
   // Filter tiles based on user role with proper hierarchy
   // Author: Hassan
   // Date: 2025-10-22
+  // Updated: 2026-01-03 - Added feature flag filtering for Pre-shipment Scan (Hassan)
   // Role Hierarchy: OPERATOR < SUPERVISOR < ADMIN
   // OPERATOR: Can access OPERATOR-level features only (Skid Build, Shipment Load)
   // SUPERVISOR: Can access OPERATOR + SUPERVISOR features (all dashboards, monitor)
@@ -39,6 +43,11 @@ export default function HomePage() {
     return DASHBOARD_TILES.filter(tile => {
       // All tiles now require a role (no undefined check needed)
       if (!tile.requiresRole) return false;
+
+      // Check feature flags - hide Pre-shipment Scan if disabled
+      if (tile.route === '/pre-shipment-scan' && !enablePreShipmentScan) {
+        return false;
+      }
 
       // ADMIN can access everything
       if (user.role === 'ADMIN') return true;
