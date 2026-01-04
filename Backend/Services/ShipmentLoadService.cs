@@ -24,6 +24,7 @@ public interface IShipmentLoadService
     Task<ApiResponse<SessionResponseDto>> StartOrResumeSessionAsync(StartSessionRequestDto request);
     Task<ApiResponse<SessionResponseDto>> UpdateSessionAsync(Guid sessionId, UpdateSessionRequestDto request);
     Task<ApiResponse<SessionResponseDto>> GetSessionAsync(Guid sessionId);
+    Task<ApiResponse<RestartSessionResponseDto>> RestartSessionAsync(Guid sessionId);
 
     // Scan operations
     Task<ApiResponse<ShipmentLoadScanResponseDto>> ValidateAndScanOrderAsync(ShipmentLoadScanRequestDto request);
@@ -1145,5 +1146,95 @@ public class ShipmentLoadService : IShipmentLoadService
             // If Toyota requires different codes for shipment load, add mappings here
             _ => skidBuildCode
         };
+    }
+
+    /// <summary>
+    /// Restart a shipment load session - clears all scans and resets orders to SkidBuilt status
+    /// BLOCKS if session already confirmed by Toyota
+    /// </summary>
+    public async Task<ApiResponse<RestartSessionResponseDto>> RestartSessionAsync(Guid sessionId)
+    {
+        try
+        {
+            _logger.LogInformation("[SHIPMENT LOAD RESTART] Starting restart for session: {SessionId}", sessionId);
+
+            // 1. Get session by sessionId
+            var session = await _repository.GetSessionByIdAsync(sessionId);
+
+            if (session == null)
+            {
+                return ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                    "Session not found",
+                    $"Session {sessionId} does not exist");
+            }
+
+            // 2. BLOCK if Toyota confirmed
+            if (session.ToyotaStatus == "confirmed")
+            {
+                _logger.LogWarning("[SHIPMENT LOAD RESTART] Blocked - Session already confirmed by Toyota (Confirmation: {ConfirmationNumber})",
+                    session.ToyotaConfirmationNumber);
+
+                return ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                    "Cannot restart - already confirmed by Toyota",
+                    $"Session has been confirmed by Toyota (Confirmation: {session.ToyotaConfirmationNumber}). Restart is not allowed.");
+            }
+
+            _logger.LogInformation("[SHIPMENT LOAD RESTART] Proceeding with restart - Route: {RouteNumber}, Status: {ToyotaStatus}",
+                session.RouteNumber, session.ToyotaStatus ?? "none");
+
+            // 3. Get all Orders linked to this session
+            var orders = await _repository.GetOrdersBySessionIdAsync(sessionId);
+            _logger.LogInformation("[SHIPMENT LOAD RESTART] Found {Count} orders linked to session", orders.Count);
+
+            // 4. Clear SkidScan.ShipmentLoadSessionId for all scans linked to this session
+            int scansCleared = await _repository.ClearShipmentLoadSessionIdForSessionAsync(sessionId);
+            _logger.LogInformation("[SHIPMENT LOAD RESTART] Cleared ShipmentLoadSessionId from {Count} SkidScans", scansCleared);
+
+            // 5. Delete all ShipmentLoadExceptions for this session
+            int exceptionsDeleted = await _repository.DeleteExceptionsBySessionIdAsync(sessionId);
+            _logger.LogInformation("[SHIPMENT LOAD RESTART] Deleted {Count} ShipmentLoadExceptions", exceptionsDeleted);
+
+            // 6. Reset all Orders
+            foreach (var order in orders)
+            {
+                order.ShipmentLoadSessionId = null;
+                order.Status = OrderStatus.SkidBuilt;
+                order.ToyotaShipmentConfirmationNumber = null;
+                order.ToyotaShipmentStatus = null;
+                order.ToyotaShipmentErrorMessage = null;
+                order.ToyotaShipmentSubmittedAt = null;
+            }
+
+            if (orders.Any())
+            {
+                await _repository.UpdateOrdersAsync(orders);
+                _logger.LogInformation("[SHIPMENT LOAD RESTART] Reset {Count} orders to SkidBuilt status", orders.Count);
+            }
+
+            // 7. Mark session as "cancelled" (keep for audit trail)
+            session.Status = "cancelled";
+            session.CompletedAt = DateTime.UtcNow;
+            await _repository.UpdateSessionAsync(session);
+            _logger.LogInformation("[SHIPMENT LOAD RESTART] Session {SessionId} marked as cancelled", sessionId);
+
+            // 8. Return success response
+            var responseDto = new RestartSessionResponseDto
+            {
+                Success = true,
+                Message = $"Session cancelled. All orders and scans have been reset.",
+                NewSessionId = null
+            };
+
+            return ApiResponse<RestartSessionResponseDto>.SuccessResponse(
+                responseDto,
+                $"Session restarted successfully. {orders.Count} orders reset to SkidBuilt status.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SHIPMENT LOAD RESTART] Error restarting session: {SessionId}", sessionId);
+            return ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                "Failed to restart session",
+                ex.Message);
+        }
     }
 }

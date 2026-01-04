@@ -26,6 +26,7 @@ public interface ISkidBuildService
     Task<ApiResponse<bool>> DeleteExceptionAsync(Guid exceptionId);
     Task<ApiResponse<SkidBuildCompleteResponseDto>> CompleteSessionAsync(Guid sessionId, Guid userId);
     Task<ApiResponse<SkidBuildSessionDto>> GetSessionByIdAsync(Guid sessionId);
+    Task<ApiResponse<RestartSessionResponseDto>> RestartSessionAsync(Guid sessionId);
 }
 
 /// <summary>
@@ -36,6 +37,7 @@ public class SkidBuildService : ISkidBuildService
     private readonly ISkidBuildRepository _skidBuildRepository;
     private readonly IToyotaValidationService _toyotaValidationService;
     private readonly IToyotaApiService _toyotaApiService;
+    private readonly ISiteSettingsRepository _siteSettingsRepository;
     private readonly ILogger<SkidBuildService> _logger;
 
     // System user ID for operations when user is not authenticated
@@ -45,11 +47,13 @@ public class SkidBuildService : ISkidBuildService
         ISkidBuildRepository skidBuildRepository,
         IToyotaValidationService toyotaValidationService,
         IToyotaApiService toyotaApiService,
+        ISiteSettingsRepository siteSettingsRepository,
         ILogger<SkidBuildService> logger)
     {
         _skidBuildRepository = skidBuildRepository;
         _toyotaValidationService = toyotaValidationService;
         _toyotaApiService = toyotaApiService;
+        _siteSettingsRepository = siteSettingsRepository;
         _logger = logger;
     }
 
@@ -353,6 +357,63 @@ public class SkidBuildService : ISkidBuildService
                     return ApiResponse<SkidBuildScanResponseDto>.ErrorResponse(
                         "Palletization Code Mismatch",
                         palletizationValidation.ErrorMessage ?? "Palletization code validation failed");
+                }
+            }
+
+            // DUPLICATE CHECK: Validate internal kanban duplicates (respecting AllowDuplicates setting)
+            if (!string.IsNullOrWhiteSpace(request.InternalKanban) && session.OrderId.HasValue)
+            {
+                // Get site settings to check if duplicates are allowed
+                var siteSettings = await _siteSettingsRepository.GetAsync();
+                bool allowDuplicates = siteSettings?.KanbanAllowDuplicates ?? false;
+
+                if (!allowDuplicates)
+                {
+                    // Check if this internal kanban was already scanned for this order
+                    var isDuplicate = await _skidBuildRepository.IsInternalKanbanAlreadyScannedAsync(
+                        session.OrderId.Value,
+                        request.InternalKanban);
+
+                    if (isDuplicate)
+                    {
+                        _logger.LogWarning(
+                            "Duplicate internal kanban blocked: '{InternalKanban}' for Order: {OrderId}",
+                            request.InternalKanban,
+                            session.OrderId.Value);
+
+                        return ApiResponse<SkidBuildScanResponseDto>.ErrorResponse(
+                            "Duplicate Internal Kanban",
+                            $"Internal Kanban '{request.InternalKanban}' has already been scanned for this order");
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "Duplicate internal kanban allowed (setting enabled): '{InternalKanban}' for Order: {OrderId}",
+                        request.InternalKanban,
+                        session.OrderId.Value);
+                }
+            }
+
+            // STRICT DUPLICATE CHECK: Validate Toyota Kanban duplicates (ALWAYS enforced - no setting)
+            if (session.OrderId.HasValue)
+            {
+                var isToyotaKanbanDuplicate = await _skidBuildRepository.IsToyotaKanbanAlreadyScannedAsync(
+                    session.OrderId.Value,
+                    request.PlannedItemId,
+                    request.BoxNumber);
+
+                if (isToyotaKanbanDuplicate)
+                {
+                    _logger.LogWarning(
+                        "Duplicate Toyota Kanban blocked: PlannedItemId '{PlannedItemId}', BoxNumber '{BoxNumber}' for Order: {OrderId}",
+                        request.PlannedItemId,
+                        request.BoxNumber,
+                        session.OrderId.Value);
+
+                    return ApiResponse<SkidBuildScanResponseDto>.ErrorResponse(
+                        "Duplicate Toyota Kanban",
+                        $"Toyota Kanban for this part and box number has already been scanned for this order");
                 }
             }
 
@@ -757,6 +818,108 @@ public class SkidBuildService : ISkidBuildService
             _logger.LogError(ex, "Error retrieving session: {SessionId}", sessionId);
             return ApiResponse<SkidBuildSessionDto>.ErrorResponse(
                 "Failed to retrieve session",
+                ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Restart a skid build session - clears all scans and resets order to Planned status
+    /// BLOCKS if order already confirmed by Toyota
+    /// </summary>
+    public async Task<ApiResponse<RestartSessionResponseDto>> RestartSessionAsync(Guid sessionId)
+    {
+        try
+        {
+            _logger.LogInformation("[SKID BUILD RESTART] Starting restart for session: {SessionId}", sessionId);
+
+            // 1. Get session by sessionId
+            var session = await _skidBuildRepository.GetSessionByIdAsync(sessionId);
+
+            if (session == null)
+            {
+                return ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                    "Session not found",
+                    $"Session {sessionId} does not exist");
+            }
+
+            // 2. Validate session has an OrderId
+            if (session.OrderId == null)
+            {
+                return ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                    "Invalid session",
+                    "Session does not have an associated order");
+            }
+
+            // 3. Get Order from session.OrderId
+            var order = await _skidBuildRepository.GetOrderByIdAsync(session.OrderId.Value);
+
+            if (order == null)
+            {
+                return ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                    "Order not found",
+                    $"Order {session.OrderId} does not exist");
+            }
+
+            // 4. BLOCK if Toyota confirmed
+            if (order.ToyotaSkidBuildStatus == "confirmed")
+            {
+                _logger.LogWarning("[SKID BUILD RESTART] Blocked - Order {OrderNumber} already confirmed by Toyota (Confirmation: {ConfirmationNumber})",
+                    order.RealOrderNumber, order.ToyotaSkidBuildConfirmationNumber);
+
+                return ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                    "Cannot restart - already confirmed by Toyota",
+                    $"Order {order.RealOrderNumber} has been confirmed by Toyota (Confirmation: {order.ToyotaSkidBuildConfirmationNumber}). Restart is not allowed.");
+            }
+
+            _logger.LogInformation("[SKID BUILD RESTART] Proceeding with restart - Order: {OrderNumber}, Status: {ToyotaStatus}",
+                order.RealOrderNumber, order.ToyotaSkidBuildStatus ?? "none");
+
+            // 5. Get all PlannedItemIds for this Order
+            var plannedItemIds = order.PlannedItems.Select(pi => pi.PlannedItemId).ToList();
+
+            // 6. Delete all SkidScans where PlannedItemId in those IDs
+            int scansDeleted = await _skidBuildRepository.DeleteSkidScansByPlannedItemIdsAsync(plannedItemIds);
+            _logger.LogInformation("[SKID BUILD RESTART] Deleted {Count} SkidScans for order {OrderNumber}",
+                scansDeleted, order.RealOrderNumber);
+
+            // 7. Delete all SkidBuildExceptions where OrderId = order.OrderId
+            int exceptionsDeleted = await _skidBuildRepository.DeleteExceptionsByOrderIdAsync(order.OrderId);
+            _logger.LogInformation("[SKID BUILD RESTART] Deleted {Count} SkidBuildExceptions for order {OrderNumber}",
+                exceptionsDeleted, order.RealOrderNumber);
+
+            // 8. Reset Order
+            order.Status = OrderStatus.Planned;
+            order.ToyotaSkidBuildConfirmationNumber = null;
+            order.ToyotaSkidBuildStatus = null;
+            order.ToyotaSkidBuildErrorMessage = null;
+            order.ToyotaSkidBuildSubmittedAt = null;
+
+            await _skidBuildRepository.UpdateOrderAsync(order);
+            _logger.LogInformation("[SKID BUILD RESTART] Order {OrderNumber} reset to Planned status", order.RealOrderNumber);
+
+            // 9. Mark session as "cancelled"
+            session.Status = "cancelled";
+            session.CompletedAt = DateTime.UtcNow;
+            await _skidBuildRepository.UpdateSessionAsync(session);
+            _logger.LogInformation("[SKID BUILD RESTART] Session {SessionId} marked as cancelled", sessionId);
+
+            // 10. Return success response
+            var responseDto = new RestartSessionResponseDto
+            {
+                Success = true,
+                Message = $"Order {order.RealOrderNumber} has been reset. All scans and exceptions cleared.",
+                NewSessionId = null
+            };
+
+            return ApiResponse<RestartSessionResponseDto>.SuccessResponse(
+                responseDto,
+                $"Session restarted successfully. Order reset to Planned status.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SKID BUILD RESTART] Error restarting session: {SessionId}", sessionId);
+            return ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                "Failed to restart session",
                 ex.Message);
         }
     }

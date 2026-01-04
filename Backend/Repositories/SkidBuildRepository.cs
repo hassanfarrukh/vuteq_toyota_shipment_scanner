@@ -40,6 +40,14 @@ public interface ISkidBuildRepository
     Task<IEnumerable<SkidBuildException>> GetExceptionsByOrderAsync(Guid orderId);
     Task<SkidBuildException?> GetExceptionByIdAsync(Guid exceptionId);
     Task<bool> DeleteExceptionAsync(Guid exceptionId);
+    Task<int> DeleteExceptionsByOrderIdAsync(Guid orderId);
+
+    // Restart operations
+    Task<int> DeleteSkidScansByPlannedItemIdsAsync(List<Guid> plannedItemIds);
+
+    // Duplicate check operations
+    Task<bool> IsInternalKanbanAlreadyScannedAsync(Guid orderId, string internalKanban);
+    Task<bool> IsToyotaKanbanAlreadyScannedAsync(Guid orderId, Guid plannedItemId, int boxNumber);
 }
 
 /// <summary>
@@ -396,6 +404,145 @@ public class SkidBuildRepository : ISkidBuildRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting exception: {ExceptionId}", exceptionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Delete all exceptions for an order (used during session restart)
+    /// </summary>
+    public async Task<int> DeleteExceptionsByOrderIdAsync(Guid orderId)
+    {
+        try
+        {
+            var exceptions = await _context.SkidBuildExceptions
+                .Where(e => e.OrderId == orderId)
+                .ToListAsync();
+
+            if (!exceptions.Any())
+            {
+                _logger.LogInformation("No exceptions found for order: {OrderId}", orderId);
+                return 0;
+            }
+
+            _context.SkidBuildExceptions.RemoveRange(exceptions);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Deleted {Count} exceptions for order: {OrderId}", exceptions.Count, orderId);
+            return exceptions.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting exceptions for order: {OrderId}", orderId);
+            throw;
+        }
+    }
+
+    #endregion
+
+    #region Restart Operations
+
+    /// <summary>
+    /// Delete all SkidScans for a list of PlannedItemIds (used during session restart)
+    /// </summary>
+    public async Task<int> DeleteSkidScansByPlannedItemIdsAsync(List<Guid> plannedItemIds)
+    {
+        try
+        {
+            if (plannedItemIds == null || !plannedItemIds.Any())
+            {
+                _logger.LogInformation("No planned items provided for scan deletion");
+                return 0;
+            }
+
+            var scans = await _context.SkidScans
+                .Where(s => plannedItemIds.Contains(s.PlannedItemId))
+                .ToListAsync();
+
+            if (!scans.Any())
+            {
+                _logger.LogInformation("No scans found for the provided planned items");
+                return 0;
+            }
+
+            _context.SkidScans.RemoveRange(scans);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Deleted {Count} skid scans for {ItemCount} planned items",
+                scans.Count, plannedItemIds.Count);
+            return scans.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting skid scans for planned items");
+            throw;
+        }
+    }
+
+    #endregion
+
+    #region Duplicate Check Operations
+
+    /// <summary>
+    /// Check if an internal kanban has already been scanned for a specific order
+    /// </summary>
+    public async Task<bool> IsInternalKanbanAlreadyScannedAsync(Guid orderId, string internalKanban)
+    {
+        try
+        {
+            // Get all planned items for this order
+            var order = await _context.Orders
+                .Include(o => o.PlannedItems)
+                    .ThenInclude(pi => pi.SkidScans)
+                .FirstOrDefaultAsync(o => o.OrderId == orderId);
+
+            if (order?.PlannedItems == null)
+                return false;
+
+            // Check if any scan for this order has the same internal kanban
+            var exists = order.PlannedItems
+                .SelectMany(pi => pi.SkidScans)
+                .Any(scan => !string.IsNullOrWhiteSpace(scan.InternalKanban) &&
+                            scan.InternalKanban.Equals(internalKanban, StringComparison.OrdinalIgnoreCase));
+
+            return exists;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking duplicate internal kanban for order: {OrderId}, kanban: {InternalKanban}",
+                orderId, internalKanban);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Check if a Toyota Kanban (PlannedItemId + BoxNumber combination) has already been scanned for a specific order
+    /// STRICT validation - always enforced, no setting override
+    /// </summary>
+    public async Task<bool> IsToyotaKanbanAlreadyScannedAsync(Guid orderId, Guid plannedItemId, int boxNumber)
+    {
+        try
+        {
+            // Get all planned items for this order
+            var order = await _context.Orders
+                .Include(o => o.PlannedItems)
+                    .ThenInclude(pi => pi.SkidScans)
+                .FirstOrDefaultAsync(o => o.OrderId == orderId);
+
+            if (order?.PlannedItems == null)
+                return false;
+
+            // Check if any scan for this order has the same PlannedItemId + BoxNumber combination
+            var exists = order.PlannedItems
+                .SelectMany(pi => pi.SkidScans)
+                .Any(scan => scan.PlannedItemId == plannedItemId && scan.BoxNumber == boxNumber);
+
+            return exists;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking duplicate Toyota Kanban for order: {OrderId}, PlannedItemId: {PlannedItemId}, BoxNumber: {BoxNumber}",
+                orderId, plannedItemId, boxNumber);
             throw;
         }
     }

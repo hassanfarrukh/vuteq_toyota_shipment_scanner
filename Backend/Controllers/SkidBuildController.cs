@@ -674,6 +674,103 @@ public class SkidBuildController : ControllerBase
                 "An unexpected error occurred while retrieving session"));
         }
     }
+
+    /// <summary>
+    /// Restart a skid build session - clears all scans and resets order
+    /// </summary>
+    /// <remarks>
+    /// Restarts a skid build session by clearing all related data and resetting the order to Planned status.
+    ///
+    /// **IMPORTANT:** This endpoint will be BLOCKED if the order has already been confirmed by Toyota.
+    ///
+    /// **What happens during restart:**
+    /// 1. Validates session exists
+    /// 2. Gets the Order from session.OrderId
+    /// 3. **BLOCKS if ToyotaSkidBuildStatus == "confirmed"** - returns error
+    /// 4. Deletes all SkidScans for this order
+    /// 5. Deletes all SkidBuildExceptions for this order
+    /// 6. Resets Order to Planned status with Toyota fields cleared
+    /// 7. Cancels the session
+    ///
+    /// **Sample Request:**
+    /// ```
+    /// POST /api/v1/skid-build/session/770e8400-e29b-41d4-a716-446655440777/restart
+    /// ```
+    ///
+    /// **Sample Response (Success):**
+    /// ```json
+    /// {
+    ///   "success": true,
+    ///   "message": "Session restarted successfully. Order reset to Planned status.",
+    ///   "data": {
+    ///     "success": true,
+    ///     "message": "Order 2023080205 has been reset. All scans and exceptions cleared.",
+    ///     "newSessionId": null
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// **Sample Response (Blocked):**
+    /// ```json
+    /// {
+    ///   "success": false,
+    ///   "message": "Cannot restart - already confirmed by Toyota",
+    ///   "errors": ["Order 2023080205 has been confirmed by Toyota (Confirmation: TYT-123). Restart is not allowed."]
+    /// }
+    /// ```
+    /// </remarks>
+    /// <param name="sessionId">Session ID to restart</param>
+    /// <returns>Restart result</returns>
+    /// <response code="200">Session restarted successfully</response>
+    /// <response code="400">Cannot restart - order confirmed by Toyota or other validation error</response>
+    /// <response code="404">Session not found</response>
+    /// <response code="401">Unauthorized - JWT token required</response>
+    /// <response code="500">Internal server error</response>
+    [HttpPost("session/{sessionId}/restart")]
+    [ProducesResponseType(typeof(ApiResponse<RestartSessionResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<RestartSessionResponseDto>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<RestartSessionResponseDto>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> RestartSession([FromRoute] Guid sessionId)
+    {
+        try
+        {
+            _logger.LogInformation("[SKID BUILD] Restart session request - SessionId: {SessionId}", sessionId);
+
+            if (sessionId == Guid.Empty)
+            {
+                return BadRequest(ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                    "Invalid request",
+                    "Session ID is required"));
+            }
+
+            var result = await _skidBuildService.RestartSessionAsync(sessionId);
+
+            if (result.Success)
+            {
+                _logger.LogInformation("[SKID BUILD] Session restarted successfully - SessionId: {SessionId}", sessionId);
+                return Ok(result);
+            }
+
+            // Check if it's a "not found" error
+            if (result.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            {
+                return NotFound(result);
+            }
+
+            // Otherwise it's a validation error (e.g., already confirmed by Toyota)
+            _logger.LogWarning("[SKID BUILD] Restart blocked: {Message}", result.Message);
+            return BadRequest(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SKID BUILD] Unexpected error restarting session: {SessionId}", sessionId);
+            return StatusCode(500, ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                "Internal server error",
+                "An unexpected error occurred while restarting session"));
+        }
+    }
 }
 
 /// <summary>

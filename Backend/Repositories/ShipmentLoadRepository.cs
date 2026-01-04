@@ -41,6 +41,7 @@ public interface IShipmentLoadRepository
     // Exception operations
     Task<ShipmentLoadException> AddExceptionAsync(ShipmentLoadException exception);
     Task DeleteExceptionAsync(Guid exceptionId);
+    Task<int> DeleteExceptionsBySessionIdAsync(Guid sessionId);
 
     // Skid Build Exception operations
     Task<List<SkidBuildException>> GetSkidBuildExceptionsByOrderIdAsync(Guid orderId);
@@ -49,6 +50,9 @@ public interface IShipmentLoadRepository
     Task<string?> GetRouteByOrderNumberAsync(string orderNumber, string dockCode);
     Task<ShipmentLoadSession?> GetSessionByRouteAndCreatedViaAsync(string routeNumber, string createdVia);
     Task<List<ShipmentLoadSession>> GetSessionsByCreatedViaAsync(string createdVia);
+
+    // Restart operations
+    Task<int> ClearShipmentLoadSessionIdForSessionAsync(Guid sessionId);
 }
 
 /// <summary>
@@ -640,6 +644,71 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving sessions for CreatedVia: {CreatedVia}", createdVia);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Delete all exceptions for a session (used during session restart)
+    /// </summary>
+    public async Task<int> DeleteExceptionsBySessionIdAsync(Guid sessionId)
+    {
+        try
+        {
+            var exceptions = await _context.ShipmentLoadExceptions
+                .Where(e => e.SessionId == sessionId)
+                .ToListAsync();
+
+            if (!exceptions.Any())
+            {
+                _logger.LogInformation("No exceptions found for session: {SessionId}", sessionId);
+                return 0;
+            }
+
+            _context.ShipmentLoadExceptions.RemoveRange(exceptions);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Deleted {Count} exceptions for session: {SessionId}", exceptions.Count, sessionId);
+            return exceptions.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting exceptions for session: {SessionId}", sessionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Clear ShipmentLoadSessionId from all SkidScans for a session (used during session restart)
+    /// </summary>
+    public async Task<int> ClearShipmentLoadSessionIdForSessionAsync(Guid sessionId)
+    {
+        try
+        {
+            var scans = await _context.SkidScans
+                .Where(s => s.ShipmentLoadSessionId == sessionId)
+                .ToListAsync();
+
+            if (!scans.Any())
+            {
+                _logger.LogInformation("No scans found for session: {SessionId}", sessionId);
+                return 0;
+            }
+
+            foreach (var scan in scans)
+            {
+                scan.ShipmentLoadSessionId = null;
+            }
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Cleared ShipmentLoadSessionId from {Count} scans for session: {SessionId}",
+                scans.Count, sessionId);
+            return scans.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error clearing ShipmentLoadSessionId for session: {SessionId}", sessionId);
             throw;
         }
     }

@@ -125,7 +125,7 @@ import Card, { CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import Alert from '@/components/ui/Alert';
 import Badge from '@/components/ui/Badge';
 import VUTEQStaticBackground from '@/components/layout/VUTEQStaticBackground';
-import { getSkidBuildOrderGrouped, startSkidBuildSession, recordSkidBuildScan, completeSkidBuildSession, addSkidBuildException, deleteSkidBuildException } from '@/lib/api';
+import { getSkidBuildOrderGrouped, startSkidBuildSession, recordSkidBuildScan, completeSkidBuildSession, addSkidBuildException, deleteSkidBuildException, restartSkidBuildSession } from '@/lib/api';
 import type { ScanResult } from '@/types';
 
 // ===========================
@@ -571,8 +571,6 @@ export default function SkidBuildV2Page() {
   // Pending Toyota Kanban (waiting for internal kanban scan)
   const [pendingToyotaKanban, setPendingToyotaKanban] = useState<ParsedToyotaKanban | null>(null);
 
-  // Track scanned internal kanbans to prevent duplicates
-  const [scannedInternalKanbans, setScannedInternalKanbans] = useState<string[]>([]);
 
   // Expandable sections
   const [_expandedSkids, setExpandedSkids] = useState<string[]>([]);
@@ -908,6 +906,25 @@ export default function SkidBuildV2Page() {
       }
     }
 
+    // Check for duplicate Toyota Kanban (PlannedItemId + BoxNumber)
+    // Author: Hassan, Date: 2026-01-04
+    const boxNumber = parseInt(parsed.boxNumber) || 1;
+
+    // Check in previously scanned items (from API via scanDetails)
+    const alreadyScannedInAPI = matchingPlanned.scanDetails?.some(
+      scan => scan.boxNumber === boxNumber
+    );
+
+    // Check in current session scanned items
+    const alreadyScannedInSession = currentSkid.scanned.some(
+      s => s.partNumber === parsed.partNumber && s.boxNumber === boxNumber
+    );
+
+    if (alreadyScannedInAPI || alreadyScannedInSession) {
+      setError(`Box ${boxNumber} for part ${parsed.partNumber} has already been scanned for this order`);
+      return;
+    }
+
     // Kanban VALIDATED - Store and open Internal Kanban modal
     setPendingToyotaKanban(parsed);
     setShowInternalKanbanModal(true);
@@ -943,12 +960,6 @@ export default function SkidBuildV2Page() {
 
     if (!parsed) {
       setError('Invalid Internal Kanban format. Expected: PART/KANBAN/SERIAL');
-      return;
-    }
-
-    // Check for duplicate internal kanban
-    if (scannedInternalKanbans.includes(parsed.internalKanban)) {
-      setError(`Internal Kanban ${parsed.internalKanban} has already been scanned`);
       return;
     }
 
@@ -1068,9 +1079,6 @@ export default function SkidBuildV2Page() {
       });
     });
 
-    // Track internal kanban to prevent duplicates
-    setScannedInternalKanbans(prev => [...prev, parsed.internalKanban]);
-
     // Clear pending kanban
     setPendingToyotaKanban(null);
     setSuccess(`✓ Added: ${pendingToyotaKanban.partNumber} - ${pendingToyotaKanban.description} to Skid ${currentSkidId}`);
@@ -1175,10 +1183,29 @@ export default function SkidBuildV2Page() {
 
   /**
    * Reset all data
+   * Updated: 2026-01-04 - Integrated restart session API
    */
-  const handleReset = () => {
-    if (confirm('Reset all data and start over?')) {
+  const handleReset = async () => {
+    if (!confirm('Are you sure you want to restart? All scanned data will be deleted. This action cannot be undone.')) {
+      return;
+    }
+
+    if (!sessionId) {
+      // No session, just reload
       window.location.reload();
+      return;
+    }
+
+    try {
+      const response = await restartSkidBuildSession(sessionId);
+      if (response.success) {
+        // Clear local state and reload to start fresh
+        window.location.reload();
+      } else {
+        alert(response.error || 'Failed to restart session');
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to restart session. It may have already been confirmed by Toyota.');
     }
   };
 
@@ -1314,13 +1341,6 @@ export default function SkidBuildV2Page() {
     const parsed = parseInternalKanban(internalKanbanInput);
     if (!parsed) {
       setInternalKanbanError('Invalid internal kanban format. Expected: PART/KANBAN/SERIAL');
-      setInternalKanbanInput(''); // Clear for retry
-      return;
-    }
-
-    // Check for duplicate
-    if (scannedInternalKanbans.includes(parsed.internalKanban)) {
-      setInternalKanbanError(`Internal Kanban ${parsed.internalKanban} has already been scanned`);
       setInternalKanbanInput(''); // Clear for retry
       return;
     }

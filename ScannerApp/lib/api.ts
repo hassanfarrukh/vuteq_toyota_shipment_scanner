@@ -1937,3 +1937,81 @@ export async function deletePreShipment(
     };
   }
 }
+
+// ===== RESTART SESSION APIs =====
+// Author: Hassan, Date: 2026-01-04
+// Restart APIs for Skid Build and Shipment Load sessions
+
+export interface RestartSessionResponse {
+  success: boolean;
+  message: string;
+  newSessionId: string | null;
+}
+
+// Restart Skid Build session
+export async function restartSkidBuildSession(
+  sessionId: string
+): Promise<ApiResponse<RestartSessionResponse>> {
+  try {
+    const response = await apiClient.post(`/api/v1/skid-build/session/${sessionId}/restart`);
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to restart session',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+// Restart Shipment Load session
+export async function restartShipmentLoadSession(
+  sessionId: string
+): Promise<ApiResponse<RestartSessionResponse>> {
+  try {
+    const response = await apiClient.post(`/api/v1/shipment-load/session/${sessionId}/restart`);
+
+    const result = response.data;
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+        error: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: result.message || 'Failed to restart session',
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: getErrorMessage(error),
+      timestamp: new Date().toISOString(),
+    };
+  }
+}

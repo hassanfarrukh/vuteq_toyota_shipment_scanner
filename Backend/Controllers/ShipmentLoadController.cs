@@ -549,4 +549,101 @@ public class ShipmentLoadController : ControllerBase
                 "Internal server error", "An unexpected error occurred"));
         }
     }
+
+    /// <summary>
+    /// Restart a shipment load session - clears all scans and resets orders
+    /// </summary>
+    /// <remarks>
+    /// Restarts a shipment load session by clearing all related data and resetting orders to SkidBuilt status.
+    ///
+    /// **IMPORTANT:** This endpoint will be BLOCKED if the session has already been confirmed by Toyota.
+    ///
+    /// **What happens during restart:**
+    /// 1. Validates session exists
+    /// 2. **BLOCKS if Session.ToyotaStatus == "confirmed"** - returns error
+    /// 3. Gets all Orders linked to this session
+    /// 4. Clears ShipmentLoadSessionId from all SkidScans for this session
+    /// 5. Deletes all ShipmentLoadExceptions for this session
+    /// 6. Resets all Orders to SkidBuilt status with shipment fields cleared
+    /// 7. Marks session as "cancelled" (kept for audit trail)
+    ///
+    /// **Sample Request:**
+    /// ```
+    /// POST /api/v1/shipment-load/session/550e8400-e29b-41d4-a716-446655440000/restart
+    /// ```
+    ///
+    /// **Sample Response (Success):**
+    /// ```json
+    /// {
+    ///   "success": true,
+    ///   "message": "Session restarted successfully. 3 orders reset to SkidBuilt status.",
+    ///   "data": {
+    ///     "success": true,
+    ///     "message": "Session cancelled. All orders and scans have been reset.",
+    ///     "newSessionId": null
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// **Sample Response (Blocked):**
+    /// ```json
+    /// {
+    ///   "success": false,
+    ///   "message": "Cannot restart - already confirmed by Toyota",
+    ///   "errors": ["Session has been confirmed by Toyota (Confirmation: TYT-456). Restart is not allowed."]
+    /// }
+    /// ```
+    /// </remarks>
+    /// <param name="sessionId">Session ID to restart</param>
+    /// <returns>Restart result</returns>
+    /// <response code="200">Session restarted successfully</response>
+    /// <response code="400">Cannot restart - session confirmed by Toyota or other validation error</response>
+    /// <response code="404">Session not found</response>
+    /// <response code="401">Unauthorized - JWT token required</response>
+    /// <response code="500">Internal server error</response>
+    [HttpPost("session/{sessionId}/restart")]
+    [ProducesResponseType(typeof(ApiResponse<RestartSessionResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<RestartSessionResponseDto>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<RestartSessionResponseDto>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> RestartSession([FromRoute] Guid sessionId)
+    {
+        try
+        {
+            _logger.LogInformation("[SHIPMENT LOAD] Restart session request - SessionId: {SessionId}", sessionId);
+
+            if (sessionId == Guid.Empty)
+            {
+                return BadRequest(ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                    "Invalid request",
+                    "Session ID is required"));
+            }
+
+            var result = await _shipmentLoadService.RestartSessionAsync(sessionId);
+
+            if (result.Success)
+            {
+                _logger.LogInformation("[SHIPMENT LOAD] Session restarted successfully - SessionId: {SessionId}", sessionId);
+                return Ok(result);
+            }
+
+            // Check if it's a "not found" error
+            if (result.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            {
+                return NotFound(result);
+            }
+
+            // Otherwise it's a validation error (e.g., already confirmed by Toyota)
+            _logger.LogWarning("[SHIPMENT LOAD] Restart blocked: {Message}", result.Message);
+            return BadRequest(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SHIPMENT LOAD] Unexpected error restarting session: {SessionId}", sessionId);
+            return StatusCode(500, ApiResponse<RestartSessionResponseDto>.ErrorResponse(
+                "Internal server error",
+                "An unexpected error occurred while restarting session"));
+        }
+    }
 }

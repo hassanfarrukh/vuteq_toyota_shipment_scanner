@@ -69,6 +69,7 @@ import {
   updateShipmentLoadSession,
   validateShipmentLoadOrder,
   getOrderSkids,
+  restartShipmentLoadSession,
   type PlannedOrder as ApiPlannedOrder,
   type StartSessionResponse,
   type ValidateOrderResponse,
@@ -1108,10 +1109,44 @@ export default function ShipmentLoadV2Page() {
    * Updated: 2025-11-05 - Clear localStorage draft on reset
    * Updated: 2025-11-05 - Added rackExceptionEnabled reset
    * Updated: 2025-12-17 - Updated trailerData to use new field structure
+   * Updated: 2026-01-04 - Integrated restart session API
    */
-  const handleReset = () => {
-    console.log('Resetting all state and clearing draft');
+  const handleReset = async () => {
+    if (!confirm('Are you sure you want to restart? All scanned data will be deleted. This action cannot be undone.')) {
+      return;
+    }
+
+    // Clear local draft
     localStorage.removeItem('shipment-load-v2-draft');
+
+    if (!sessionId) {
+      // No session, just reset local state
+      resetLocalState();
+      return;
+    }
+
+    try {
+      const response = await restartShipmentLoadSession(sessionId);
+      if (response.success) {
+        // Reset local state and go back to screen 1
+        resetLocalState();
+      } else {
+        alert(response.error || 'Failed to restart session');
+        // Still reset local state even if API fails
+        resetLocalState();
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to restart session. It may have already been confirmed by Toyota.');
+      // Still reset local state
+      resetLocalState();
+    }
+  };
+
+  /**
+   * Reset local state
+   * Extracted from handleReset for reusability
+   */
+  const resetLocalState = () => {
     setCurrentScreen(1);
     setPickupRouteData(null);
     setTrailerData({
@@ -1129,6 +1164,7 @@ export default function ShipmentLoadV2Page() {
     setRackExceptionEnabled(false);
     setOrderValidationData(null);
     setError(null);
+    setSessionId(null); // Also clear sessionId
   };
 
   /**
