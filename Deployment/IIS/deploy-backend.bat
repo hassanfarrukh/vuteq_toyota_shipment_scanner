@@ -6,7 +6,7 @@ REM Date: 2026-01-07
 REM Description: Builds and deploys ASP.NET Core backend to IIS
 REM ============================================================================
 
-setlocal enabledelayedexpansion
+setlocal
 
 REM Check if called with nopause parameter
 set "NOPAUSE_MODE=0"
@@ -55,9 +55,9 @@ REM Backup existing deployment
 if exist "%BACKEND_DEPLOY%" (
     echo [2/6] Backing up existing deployment...
     set BACKUP_DIR=%BACKUP_ROOT%\backend_%TIMESTAMP%
-    mkdir "!BACKUP_DIR!"
-    xcopy "%BACKEND_DEPLOY%" "!BACKUP_DIR!" /E /I /Q
-    echo Backup created: !BACKUP_DIR!
+    call mkdir "%%BACKUP_DIR%%"
+    call xcopy "%BACKEND_DEPLOY%" "%%BACKUP_DIR%%" /E /I /Q
+    call echo Backup created: %%BACKUP_DIR%%
 ) else (
     echo [2/6] No existing deployment to backup
 )
@@ -119,7 +119,7 @@ echo     }
 echo   },
 echo   "AllowedHosts": "*",
 echo   "ConnectionStrings": {
-echo     "DefaultConnection": "Server=localhost;Database=VUTEQ_Scanner;User Id=VuteqApp;Password=Coffee708478Cup^^!;TrustServerCertificate=True;MultipleActiveResultSets=true;Encrypt=False;"
+echo     "DefaultConnection": "Server=localhost;Database=VUTEQ_Scanner;User Id=VuteqApp;Password=Coffee708478Cup!;TrustServerCertificate=True;MultipleActiveResultSets=true;Encrypt=False;"
 echo   },
 echo   "JwtSettings": {
 echo     "SecretKey": "VuteqProdSecretKey2026!MinLength32CharsSecure!",

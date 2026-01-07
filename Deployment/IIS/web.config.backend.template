@@ -1,23 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
 ============================================================================
-VUTEQ Scanner - ASP.NET Core Backend Web.Config Template (Minimal)
+VUTEQ Scanner - IIS Web.Config
 Author: Hassan
 Date: 2026-01-07
-Description: Bare minimum IIS configuration for ASP.NET Core backend
+Description: Backend in-process + Frontend reverse proxy to port 3000
 ============================================================================
 -->
 <configuration>
   <location path="." inheritInChildApplications="false">
     <system.webServer>
+      <!-- ASP.NET Core handler for /api/* requests -->
       <handlers>
-        <add name="aspNetCore" path="*" verb="*" modules="AspNetCoreModuleV2" resourceType="Unspecified" />
+        <add name="aspNetCore" path="api/*" verb="*" modules="AspNetCoreModuleV2" resourceType="Unspecified" />
       </handlers>
+
       <aspNetCore processPath="dotnet"
                   arguments=".\Backend.dll"
                   stdoutLogEnabled="true"
                   stdoutLogFile=".\logs\stdout"
-                  hostingModel="inprocess" />
+                  hostingModel="inprocess">
+        <environmentVariables>
+          <environmentVariable name="ASPNETCORE_ENVIRONMENT" value="Production" />
+        </environmentVariables>
+      </aspNetCore>
+
+      <!-- URL Rewrite: Proxy all non-API requests to Frontend on port 3000 -->
+      <rewrite>
+        <rules>
+          <rule name="Frontend Reverse Proxy" stopProcessing="true">
+            <match url="(.*)" />
+            <conditions>
+              <add input="{REQUEST_URI}" pattern="^/api/" negate="true" />
+            </conditions>
+            <action type="Rewrite" url="http://localhost:3000/{R:1}" />
+          </rule>
+        </rules>
+      </rewrite>
+
     </system.webServer>
   </location>
 </configuration>
