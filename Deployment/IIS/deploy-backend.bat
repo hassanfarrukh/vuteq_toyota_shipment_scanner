@@ -119,7 +119,7 @@ echo     }
 echo   },
 echo   "AllowedHosts": "*",
 echo   "ConnectionStrings": {
-echo     "DefaultConnection": "Server=localhost;Database=VUTEQ_Scanner;User Id=VuteqApp;Password=Coffee708478Cup!;TrustServerCertificate=True;MultipleActiveResultSets=true;Encrypt=False;"
+echo     "DefaultConnection": "Server=localhost;Database=VUTEQ_Scanner;User Id=VuteqApp;Password=Coffee708478Cup^^!;TrustServerCertificate=True;MultipleActiveResultSets=true;Encrypt=False;"
 echo   },
 echo   "JwtSettings": {
 echo     "SecretKey": "VuteqProdSecretKey2026!MinLength32CharsSecure!",
