@@ -16,7 +16,6 @@ net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo ERROR: This script must be run as Administrator!
     echo Right-click and select "Run as administrator"
-    pause
     exit /b 1
 )
 
@@ -78,6 +77,4 @@ echo   pm2 delete vuteq-frontend
 echo   pm2 save
 echo.
 
-REM Only pause if run directly (not called from another script)
-if not "%1"=="nopause" pause
 exit /b 0

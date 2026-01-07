@@ -16,7 +16,6 @@ net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo ERROR: This script must be run as Administrator!
     echo Right-click and select "Run as administrator"
-    pause
     exit /b 1
 )
 
@@ -41,7 +40,6 @@ where pm2 >nul 2>&1
 if %errorLevel% neq 0 (
     echo ERROR: PM2 not found!
     echo Please run install-prerequisites.bat first
-    pause
     exit /b 1
 )
 
@@ -63,7 +61,6 @@ if exist "%FRONTEND_DEPLOY%\ecosystem.config.js" (
 ) else (
     echo ERROR: Frontend ecosystem.config.js not found!
     echo Please run deploy-frontend.bat first
-    pause
     exit /b 1
 )
 
@@ -117,6 +114,4 @@ echo   - Backend: E:\VuteqDeploy\logs\backend\backend.log
 echo   - IIS: E:\VuteqDeploy\backend\logs\stdout_*.log
 echo.
 
-REM Only pause if run directly (not called from another script)
-if not "%1"=="nopause" pause
 exit /b 0

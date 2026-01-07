@@ -16,7 +16,6 @@ net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo ERROR: This script must be run as Administrator!
     echo Right-click and select "Run as administrator"
-    pause
     exit /b 1
 )
 
@@ -36,7 +35,6 @@ echo.
 REM Verify source directory exists
 if not exist "%FRONTEND_SOURCE%" (
     echo ERROR: Frontend source directory not found: %FRONTEND_SOURCE%
-    pause
     exit /b 1
 )
 
@@ -65,7 +63,6 @@ call npm install
 
 if %errorLevel% neq 0 (
     echo ERROR: npm install failed!
-    pause
     exit /b 1
 )
 
@@ -80,7 +77,6 @@ call npm run build
 
 if %errorLevel% neq 0 (
     echo ERROR: Build failed!
-    pause
     exit /b 1
 )
 
@@ -194,6 +190,4 @@ echo.
 REM Return to original directory
 cd /d "%SCRIPT_DIR%"
 
-REM Only pause if run directly (not called from another script)
-if not "%1"=="nopause" pause
 exit /b 0

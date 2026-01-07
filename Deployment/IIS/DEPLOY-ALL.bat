@@ -25,7 +25,6 @@ if %errorLevel% neq 0 (
     echo.
     echo  Please right-click this script and select "Run as administrator"
     echo.
-    pause
     exit /b 1
 )
 
@@ -45,7 +44,6 @@ set /p confirm="Continue with deployment? (Y/N): "
 if /i not "%confirm%"=="Y" (
     echo.
     echo Deployment cancelled by user.
-    pause
     exit /b 0
 )
 
@@ -73,7 +71,6 @@ if %errorLevel% neq 0 (
     echo.
     echo ERROR: Backend deployment failed!
     echo Please check the error messages above.
-    pause
     exit /b 1
 )
 
@@ -89,7 +86,6 @@ if %errorLevel% neq 0 (
     echo.
     echo ERROR: Frontend deployment failed!
     echo Please check the error messages above.
-    pause
     exit /b 1
 )
 
@@ -110,7 +106,6 @@ if %errorLevel% neq 0 (
         echo.
         echo ERROR: IIS configuration failed!
         echo Please check the error messages above.
-        pause
         exit /b 1
     )
 ) else (
@@ -227,4 +222,3 @@ if /i "%open%"=="Y" (
 echo.
 echo Deployment timestamp: %date% %time%
 echo.
-pause
