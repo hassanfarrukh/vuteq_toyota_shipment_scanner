@@ -34,7 +34,7 @@ if (-not (Get-Module WebAdministration)) {
 $siteName = "VUTEQ Scanner"
 $backendPool = "VuteqBackendPool"
 $sitePort = 80
-$backendPath = "C:\inetpub\vuteq\backend"
+$backendPath = "E:\VuteqDeploy\backend"
 $backendUrl = "http://localhost:5000"
 $frontendUrl = "http://localhost:3000"
 

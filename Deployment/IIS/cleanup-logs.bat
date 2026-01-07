@@ -20,8 +20,8 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-set LOG_DIR=C:\inetpub\vuteq\logs
-set BACKEND_STDOUT=C:\inetpub\vuteq\backend\logs
+set LOG_DIR=E:\VuteqDeploy\logs
+set BACKEND_STDOUT=E:\VuteqDeploy\backend\logs
 set DAYS_TO_KEEP=30
 
 echo This script will delete log files older than %DAYS_TO_KEEP% days

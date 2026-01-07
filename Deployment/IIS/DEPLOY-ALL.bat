@@ -196,13 +196,13 @@ echo Application URL: http://localhost
 echo API Endpoint: http://localhost/api
 echo.
 echo Deployed Components:
-echo   Backend:  C:\inetpub\vuteq\backend
-echo   Frontend: C:\inetpub\vuteq\frontend
+echo   Backend:  E:\VuteqDeploy\backend
+echo   Frontend: E:\VuteqDeploy\frontend
 echo.
 echo Log Locations:
-echo   Backend:  C:\inetpub\vuteq\logs\backend.log
-echo   Frontend: C:\inetpub\vuteq\logs\frontend-*.log
-echo   IIS:      C:\inetpub\vuteq\backend\logs\stdout_*.log
+echo   Backend:  E:\VuteqDeploy\logs\backend\backend.log
+echo   Frontend: E:\VuteqDeploy\logs\frontend\frontend-*.log
+echo   IIS:      E:\VuteqDeploy\backend\logs\stdout_*.log
 echo.
 echo Management Commands:
 echo   Start services:   start-services.bat

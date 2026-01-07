@@ -23,7 +23,7 @@ if %errorLevel% neq 0 (
 REM Configuration - Use relative paths from script location
 set SCRIPT_DIR=%~dp0
 set BACKEND_SOURCE=%SCRIPT_DIR%..\..\Backend
-set DEPLOY_ROOT=C:\inetpub\vuteq
+set DEPLOY_ROOT=E:\VuteqDeploy
 set BACKEND_DEPLOY=%DEPLOY_ROOT%\backend
 set BACKUP_ROOT=%DEPLOY_ROOT%\backups
 set TIMESTAMP=%date:~10,4%-%date:~4,2%-%date:~7,2%_%time:~0,2%-%time:~3,2%-%time:~6,2%
@@ -104,7 +104,7 @@ echo       "Microsoft.AspNetCore": "Warning",
 echo       "Microsoft.EntityFrameworkCore": "Warning"
 echo     },
 echo     "File": {
-echo       "Path": "C:\\inetpub\\vuteq\\logs\\backend.log",
+echo       "Path": "E:\\VuteqDeploy\\logs\\backend\\backend.log",
 echo       "Append": true,
 echo       "MinLevel": "Information",
 echo       "FileSizeLimitBytes": 10485760,
@@ -133,18 +133,18 @@ echo }
 echo Production configuration created
 
 REM Create logs directory
-if not exist "C:\inetpub\vuteq\logs" mkdir "C:\inetpub\vuteq\logs"
+if not exist "E:\VuteqDeploy\logs\backend" mkdir "E:\VuteqDeploy\logs\backend"
 
 echo.
 echo [6/6] Setting folder permissions...
 
 REM Grant IIS_IUSRS full control
 icacls "%BACKEND_DEPLOY%" /grant "IIS_IUSRS:(OI)(CI)F" /T /Q
-icacls "C:\inetpub\vuteq\logs" /grant "IIS_IUSRS:(OI)(CI)F" /T /Q
+icacls "E:\VuteqDeploy\logs" /grant "IIS_IUSRS:(OI)(CI)F" /T /Q
 
 REM Grant NETWORK SERVICE permissions
 icacls "%BACKEND_DEPLOY%" /grant "NETWORK SERVICE:(OI)(CI)F" /T /Q
-icacls "C:\inetpub\vuteq\logs" /grant "NETWORK SERVICE:(OI)(CI)F" /T /Q
+icacls "E:\VuteqDeploy\logs" /grant "NETWORK SERVICE:(OI)(CI)F" /T /Q
 
 echo Permissions set successfully
 
@@ -155,7 +155,7 @@ echo ===========================================================================
 echo.
 echo Deployed to: %BACKEND_DEPLOY%
 echo Configuration: %BACKEND_DEPLOY%\appsettings.Production.json
-echo Logs: C:\inetpub\vuteq\logs\backend.log
+echo Logs: E:\VuteqDeploy\logs\backend\backend.log
 echo.
 echo Next steps:
 echo   1. Run deploy-frontend.bat

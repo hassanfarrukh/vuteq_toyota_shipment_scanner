@@ -44,8 +44,8 @@ netstat -ano | findstr :5000 | findstr LISTENING
 echo.
 echo [4/5] Disk Space
 echo ----------------------------------------
-echo C:\inetpub\vuteq\ folder size:
-powershell -Command "'{0:N2} MB' -f ((Get-ChildItem -Path 'C:\inetpub\vuteq' -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB)"
+echo E:\VuteqDeploy\ folder size:
+powershell -Command "'{0:N2} MB' -f ((Get-ChildItem -Path 'E:\VuteqDeploy' -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB)"
 
 echo.
 echo [5/5] Testing Endpoints
@@ -72,8 +72,8 @@ echo Status Check Complete
 echo ============================================================================
 echo.
 echo Recent Logs:
-echo   Frontend: C:\inetpub\vuteq\logs\frontend-out.log
-echo   Backend: C:\inetpub\vuteq\logs\backend.log
-echo   IIS: C:\inetpub\vuteq\backend\logs\stdout_*.log
+echo   Frontend: E:\VuteqDeploy\logs\frontend\frontend-out.log
+echo   Backend: E:\VuteqDeploy\logs\backend\backend.log
+echo   IIS: E:\VuteqDeploy\backend\logs\stdout_*.log
 echo.
 pause

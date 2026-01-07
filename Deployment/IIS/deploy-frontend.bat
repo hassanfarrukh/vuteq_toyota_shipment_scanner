@@ -23,7 +23,7 @@ if %errorLevel% neq 0 (
 REM Configuration - Use relative paths from script location
 set SCRIPT_DIR=%~dp0
 set FRONTEND_SOURCE=%SCRIPT_DIR%..\..\ScannerApp
-set DEPLOY_ROOT=C:\inetpub\vuteq
+set DEPLOY_ROOT=E:\VuteqDeploy
 set FRONTEND_DEPLOY=%DEPLOY_ROOT%\frontend
 set BACKUP_ROOT=%DEPLOY_ROOT%\backups
 set TIMESTAMP=%date:~10,4%-%date:~4,2%-%date:~7,2%_%time:~0,2%-%time:~3,2%-%time:~6,2%
@@ -141,7 +141,7 @@ REM Create PM2 ecosystem file
 echo module.exports = {
 echo   apps: [{
 echo     name: 'vuteq-frontend',
-echo     cwd: 'C:\\inetpub\\vuteq\\frontend',
+echo     cwd: 'E:\\VuteqDeploy\\frontend',
 echo     script: 'node_modules\\next\\dist\\bin\\next',
 echo     args: 'start -p 3000',
 echo     instances: 1,
@@ -152,8 +152,8 @@ echo       NODE_ENV: 'production',
 echo       PORT: 3000,
 echo       HOSTNAME: 'localhost'
 echo     },
-echo     error_file: 'C:\\inetpub\\vuteq\\logs\\frontend-error.log',
-echo     out_file: 'C:\\inetpub\\vuteq\\logs\\frontend-out.log',
+echo     error_file: 'E:\\VuteqDeploy\\logs\\frontend\\frontend-error.log',
+echo     out_file: 'E:\\VuteqDeploy\\logs\\frontend\\frontend-out.log',
 echo     log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
 echo     merge_logs: true,
 echo     autorestart: true,
@@ -165,12 +165,12 @@ echo };
 ) > "%FRONTEND_DEPLOY%\ecosystem.config.js"
 
 REM Create logs directory
-if not exist "C:\inetpub\vuteq\logs" mkdir "C:\inetpub\vuteq\logs"
+if not exist "E:\VuteqDeploy\logs\frontend" mkdir "E:\VuteqDeploy\logs\frontend"
 
 REM Set folder permissions
 echo Setting folder permissions...
 icacls "%FRONTEND_DEPLOY%" /grant "IIS_IUSRS:(OI)(CI)F" /T /Q
-icacls "C:\inetpub\vuteq\logs" /grant "IIS_IUSRS:(OI)(CI)F" /T /Q
+icacls "E:\VuteqDeploy\logs" /grant "IIS_IUSRS:(OI)(CI)F" /T /Q
 
 echo.
 echo ============================================================================
@@ -180,7 +180,7 @@ echo.
 echo Deployed to: %FRONTEND_DEPLOY%
 echo Configuration: %FRONTEND_DEPLOY%\ecosystem.config.js
 echo Environment: %FRONTEND_DEPLOY%\.env.production
-echo Logs: C:\inetpub\vuteq\logs\frontend-*.log
+echo Logs: E:\VuteqDeploy\logs\frontend\frontend-*.log
 echo.
 echo Next steps:
 echo   1. Run configure-iis.bat (if not done already)

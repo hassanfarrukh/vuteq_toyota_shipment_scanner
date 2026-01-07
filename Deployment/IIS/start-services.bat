@@ -20,7 +20,7 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-set FRONTEND_DEPLOY=C:\inetpub\vuteq\frontend
+set FRONTEND_DEPLOY=E:\VuteqDeploy\frontend
 set SITE_NAME=VUTEQ Scanner
 
 echo [1/4] Starting IIS Site...
@@ -58,7 +58,7 @@ if exist "%FRONTEND_DEPLOY%\ecosystem.config.js" (
         pm2 save --force
     ) else (
         echo ERROR: Failed to start frontend
-        echo Check logs: C:\inetpub\vuteq\logs\frontend-error.log
+        echo Check logs: E:\VuteqDeploy\logs\frontend\frontend-error.log
     )
 ) else (
     echo ERROR: Frontend ecosystem.config.js not found!
@@ -112,9 +112,9 @@ echo   - Restart frontend: pm2 restart vuteq-frontend
 echo   - Stop all: run stop-services.bat
 echo.
 echo Log locations:
-echo   - Frontend: C:\inetpub\vuteq\logs\frontend-*.log
-echo   - Backend: C:\inetpub\vuteq\logs\backend.log
-echo   - IIS: C:\inetpub\vuteq\backend\logs\stdout_*.log
+echo   - Frontend: E:\VuteqDeploy\logs\frontend\frontend-*.log
+echo   - Backend: E:\VuteqDeploy\logs\backend\backend.log
+echo   - IIS: E:\VuteqDeploy\backend\logs\stdout_*.log
 echo.
 
 REM Only pause if run directly (not called from another script)

@@ -38,8 +38,8 @@ echo ===========================================================================
 echo Frontend Output Log (Last 50 lines)
 echo ============================================================================
 echo.
-if exist "C:\inetpub\vuteq\logs\frontend-out.log" (
-    powershell -Command "Get-Content 'C:\inetpub\vuteq\logs\frontend-out.log' -Tail 50"
+if exist "E:\VuteqDeploy\logs\frontend\frontend-out.log" (
+    powershell -Command "Get-Content 'E:\VuteqDeploy\logs\frontend\frontend-out.log' -Tail 50"
 ) else (
     echo Log file not found
 )
@@ -52,8 +52,8 @@ echo ===========================================================================
 echo Frontend Error Log (Last 50 lines)
 echo ============================================================================
 echo.
-if exist "C:\inetpub\vuteq\logs\frontend-error.log" (
-    powershell -Command "Get-Content 'C:\inetpub\vuteq\logs\frontend-error.log' -Tail 50"
+if exist "E:\VuteqDeploy\logs\frontend\frontend-error.log" (
+    powershell -Command "Get-Content 'E:\VuteqDeploy\logs\frontend\frontend-error.log' -Tail 50"
 ) else (
     echo Log file not found
 )
@@ -66,8 +66,8 @@ echo ===========================================================================
 echo Backend Application Log (Last 50 lines)
 echo ============================================================================
 echo.
-if exist "C:\inetpub\vuteq\logs\backend.log" (
-    powershell -Command "Get-Content 'C:\inetpub\vuteq\logs\backend.log' -Tail 50"
+if exist "E:\VuteqDeploy\logs\backend\backend.log" (
+    powershell -Command "Get-Content 'E:\VuteqDeploy\logs\backend\backend.log' -Tail 50"
 ) else (
     echo Log file not found
 )
@@ -80,13 +80,13 @@ echo ===========================================================================
 echo IIS Stdout Logs (Most Recent)
 echo ============================================================================
 echo.
-if exist "C:\inetpub\vuteq\backend\logs\" (
-    dir /b /od "C:\inetpub\vuteq\backend\logs\stdout_*.log"
+if exist "E:\VuteqDeploy\backend\logs\" (
+    dir /b /od "E:\VuteqDeploy\backend\logs\stdout_*.log"
     echo.
-    for /f %%f in ('dir /b /od "C:\inetpub\vuteq\backend\logs\stdout_*.log"') do set LATEST=%%f
+    for /f %%f in ('dir /b /od "E:\VuteqDeploy\backend\logs\stdout_*.log"') do set LATEST=%%f
     echo Showing: !LATEST!
     echo.
-    type "C:\inetpub\vuteq\backend\logs\!LATEST!"
+    type "E:\VuteqDeploy\backend\logs\!LATEST!"
 ) else (
     echo Log directory not found
 )
@@ -110,12 +110,12 @@ echo ===========================================================================
 echo.
 echo Searching for errors in all log files...
 echo.
-if exist "C:\inetpub\vuteq\logs\" (
+if exist "E:\VuteqDeploy\logs\" (
     echo --- Frontend Errors ---
-    powershell -Command "Get-Content 'C:\inetpub\vuteq\logs\frontend-*.log' -ErrorAction SilentlyContinue | Select-String -Pattern 'error|exception|failed' -CaseSensitive:$false | Select-Object -Last 20"
+    powershell -Command "Get-Content 'E:\VuteqDeploy\logs\frontend\frontend-*.log' -ErrorAction SilentlyContinue | Select-String -Pattern 'error|exception|failed' -CaseSensitive:$false | Select-Object -Last 20"
     echo.
     echo --- Backend Errors ---
-    powershell -Command "Get-Content 'C:\inetpub\vuteq\logs\backend.log' -ErrorAction SilentlyContinue | Select-String -Pattern 'error|exception|failed' -CaseSensitive:$false | Select-Object -Last 20"
+    powershell -Command "Get-Content 'E:\VuteqDeploy\logs\backend\backend.log' -ErrorAction SilentlyContinue | Select-String -Pattern 'error|exception|failed' -CaseSensitive:$false | Select-Object -Last 20"
 ) else (
     echo Log directory not found
 )
