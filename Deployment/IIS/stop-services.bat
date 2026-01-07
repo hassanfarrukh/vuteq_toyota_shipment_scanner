@@ -12,12 +12,13 @@ REM Check if called with nopause parameter
 set "NOPAUSE_MODE=0"
 if /i "%1"=="nopause" set "NOPAUSE_MODE=1"
 
-if "%NOPAUSE_MODE%"=="0" (
-    echo ============================================================================
-    echo VUTEQ Scanner - Stopping Services
-    echo ============================================================================
-    echo.
-)
+if "%NOPAUSE_MODE%"=="1" goto :SKIP_HEADER
+echo ============================================================================
+echo VUTEQ Scanner - Stopping Services
+echo ============================================================================
+echo.
+
+:SKIP_HEADER
 
 REM Check for administrator privileges
 net session >nul 2>&1
@@ -39,19 +40,15 @@ if "%NOPAUSE_MODE%"=="1" goto :PM2_SILENT
 
 REM Normal mode with output
 pm2 stop vuteq-frontend 2>nul
-if !errorLevel! equ 0 (
-    echo Frontend stopped successfully
-) else (
-    echo Frontend was not running
-)
-pm2 save --force
+echo Frontend stopped
+pm2 save --force >nul 2>&1
 goto :DO_IIS
 
 :PM2_SILENT
 REM Silent mode: redirect all output
 pm2 stop vuteq-frontend >nul 2>&1
 pm2 save --force >nul 2>&1
-echo Frontend stopped successfully
+echo Frontend stopped
 goto :DO_IIS
 
 :NO_PM2
@@ -64,13 +61,8 @@ REM ============================================================================
 :DO_IIS
 echo.
 echo [2/3] Stopping IIS Site...
-%systemroot%\system32\inetsrv\appcmd stop site "%SITE_NAME%" 2>nul
-
-if !errorLevel! equ 0 (
-    echo IIS Site stopped successfully
-) else (
-    echo WARNING: Failed to stop IIS site or site was not running
-)
+%systemroot%\system32\inetsrv\appcmd stop site "%SITE_NAME%" >nul 2>&1
+echo IIS Site stopped
 
 REM Check if we should show status
 if "%NOPAUSE_MODE%"=="1" goto :SILENT_END
@@ -88,7 +80,7 @@ echo IIS Site Status:
 echo.
 echo PM2 Process Status:
 where pm2 >nul 2>&1
-if !errorLevel! neq 0 goto :NO_PM2_STATUS
+if %errorLevel% neq 0 goto :NO_PM2_STATUS
 
 pm2 list
 goto :SHOW_HELP
