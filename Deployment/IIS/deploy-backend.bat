@@ -144,17 +144,23 @@ if not exist "E:\VuteqDeploy\logs\backend" mkdir "E:\VuteqDeploy\logs\backend"
 REM Copy clean web.config template (prevents n++ corruption from auto-generated config)
 echo.
 echo Copying clean web.config template...
-if exist "%SCRIPT_DIR%web.config.backend.template" (
-    copy /Y "%SCRIPT_DIR%web.config.backend.template" "%BACKEND_DEPLOY%\web.config"
-    if %errorLevel% equ 0 (
-        echo Clean web.config deployed successfully (prevents n++ corruption)
-    ) else (
-        echo ERROR: Failed to copy web.config template
-    )
-) else (
-    echo WARNING: web.config.backend.template not found at expected location
-    echo WARNING: Using auto-generated web.config instead
-)
+if not exist "%SCRIPT_DIR%web.config.backend.template" goto :NO_TEMPLATE
+
+copy /Y "%SCRIPT_DIR%web.config.backend.template" "%BACKEND_DEPLOY%\web.config"
+if %errorLevel% neq 0 goto :COPY_FAILED
+echo Clean web.config deployed successfully
+goto :WEBCONFIG_DONE
+
+:NO_TEMPLATE
+echo WARNING: web.config.backend.template not found at expected location
+echo WARNING: Using auto-generated web.config instead
+goto :WEBCONFIG_DONE
+
+:COPY_FAILED
+echo ERROR: Failed to copy web.config template
+goto :WEBCONFIG_DONE
+
+:WEBCONFIG_DONE
 
 echo.
 echo [6/6] Setting folder permissions...
