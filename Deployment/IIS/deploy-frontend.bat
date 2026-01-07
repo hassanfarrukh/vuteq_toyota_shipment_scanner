@@ -191,6 +191,8 @@ echo   pm2 start "%FRONTEND_DEPLOY%\ecosystem.config.js"
 echo   pm2 save
 echo.
 
+REM Return to original directory
+cd /d "%SCRIPT_DIR%"
+
 REM Only pause if run directly (not called from another script)
 if "%1"=="" pause
-if not "%1"=="nopause" if "%1"=="" pause
