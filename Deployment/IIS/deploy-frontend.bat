@@ -1,0 +1,192 @@
+@echo off
+REM ============================================================================
+REM VUTEQ Scanner - Frontend Deployment Script
+REM Author: Hassan
+REM Date: 2026-01-07
+REM Description: Builds and deploys Next.js frontend with PM2
+REM ============================================================================
+
+echo ============================================================================
+echo VUTEQ Scanner - Deploying Frontend
+echo ============================================================================
+echo.
+
+REM Check for administrator privileges
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo ERROR: This script must be run as Administrator!
+    echo Right-click and select "Run as administrator"
+    pause
+    exit /b 1
+)
+
+REM Configuration
+set FRONTEND_SOURCE=D:\VUTEQ\FromHassan\Codes\ScannerApp
+set DEPLOY_ROOT=C:\inetpub\vuteq
+set FRONTEND_DEPLOY=%DEPLOY_ROOT%\frontend
+set BACKUP_ROOT=%DEPLOY_ROOT%\backups
+set TIMESTAMP=%date:~10,4%-%date:~4,2%-%date:~7,2%_%time:~0,2%-%time:~3,2%-%time:~6,2%
+set TIMESTAMP=%TIMESTAMP: =0%
+
+echo Source: %FRONTEND_SOURCE%
+echo Deploy: %FRONTEND_DEPLOY%
+echo.
+
+REM Verify source directory exists
+if not exist "%FRONTEND_SOURCE%" (
+    echo ERROR: Frontend source directory not found: %FRONTEND_SOURCE%
+    pause
+    exit /b 1
+)
+
+REM Create deployment directories
+echo [1/7] Creating deployment directories...
+if not exist "%DEPLOY_ROOT%" mkdir "%DEPLOY_ROOT%"
+if not exist "%BACKUP_ROOT%" mkdir "%BACKUP_ROOT%"
+
+REM Backup existing deployment
+if exist "%FRONTEND_DEPLOY%" (
+    echo [2/7] Backing up existing deployment...
+    set BACKUP_DIR=%BACKUP_ROOT%\frontend_%TIMESTAMP%
+    mkdir "!BACKUP_DIR!"
+    xcopy "%FRONTEND_DEPLOY%" "!BACKUP_DIR!" /E /I /Q /EXCLUDE:exclude_patterns.txt 2>nul
+    echo Backup created: !BACKUP_DIR!
+) else (
+    echo [2/7] No existing deployment to backup
+)
+
+echo.
+echo [3/7] Installing dependencies...
+cd /d "%FRONTEND_SOURCE%"
+
+REM Install dependencies
+call npm install
+
+if %errorLevel% neq 0 (
+    echo ERROR: npm install failed!
+    pause
+    exit /b 1
+)
+
+echo.
+echo [4/7] Building Next.js application...
+
+REM Set production environment
+set NODE_ENV=production
+
+REM Build Next.js
+call npm run build
+
+if %errorLevel% neq 0 (
+    echo ERROR: Build failed!
+    pause
+    exit /b 1
+)
+
+echo.
+echo [5/7] Stopping PM2 services...
+
+REM Stop existing PM2 process
+call pm2 delete vuteq-frontend 2>nul
+call pm2 save --force
+
+echo.
+echo [6/7] Deploying to %FRONTEND_DEPLOY%...
+
+REM Remove old deployment (except node_modules for faster deploy)
+if exist "%FRONTEND_DEPLOY%" (
+    if exist "%FRONTEND_DEPLOY%\node_modules" (
+        echo Preserving node_modules...
+        move "%FRONTEND_DEPLOY%\node_modules" "%TEMP%\vuteq_node_modules" >nul 2>&1
+    )
+    rmdir /s /q "%FRONTEND_DEPLOY%"
+)
+
+REM Create deployment directory
+mkdir "%FRONTEND_DEPLOY%"
+
+REM Copy all files except development artifacts
+xcopy "%FRONTEND_SOURCE%" "%FRONTEND_DEPLOY%" /E /I /Q /EXCLUDE:%~dp0exclude_frontend.txt 2>nul
+if not exist "%~dp0exclude_frontend.txt" (
+    REM Copy everything if exclude file doesn't exist
+    xcopy "%FRONTEND_SOURCE%" "%FRONTEND_DEPLOY%" /E /I /Q
+)
+
+REM Restore node_modules if preserved
+if exist "%TEMP%\vuteq_node_modules" (
+    echo Restoring node_modules...
+    move "%TEMP%\vuteq_node_modules" "%FRONTEND_DEPLOY%\node_modules" >nul 2>&1
+) else (
+    REM Install production dependencies in deployment
+    cd /d "%FRONTEND_DEPLOY%"
+    call npm install --production
+)
+
+REM Create production environment file
+echo.
+echo Creating production environment configuration...
+(
+echo NODE_ENV=production
+echo NEXT_PUBLIC_API_URL=http://localhost/api
+echo PORT=3000
+echo HOSTNAME=localhost
+) > "%FRONTEND_DEPLOY%\.env.production"
+
+echo.
+echo [7/7] Configuring PM2...
+
+REM Create PM2 ecosystem file
+(
+echo module.exports = {
+echo   apps: [{
+echo     name: 'vuteq-frontend',
+echo     cwd: 'C:\\inetpub\\vuteq\\frontend',
+echo     script: 'node_modules\\next\\dist\\bin\\next',
+echo     args: 'start -p 3000',
+echo     instances: 1,
+echo     exec_mode: 'fork',
+echo     watch: false,
+echo     env: {
+echo       NODE_ENV: 'production',
+echo       PORT: 3000,
+echo       HOSTNAME: 'localhost'
+echo     },
+echo     error_file: 'C:\\inetpub\\vuteq\\logs\\frontend-error.log',
+echo     out_file: 'C:\\inetpub\\vuteq\\logs\\frontend-out.log',
+echo     log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+echo     merge_logs: true,
+echo     autorestart: true,
+echo     max_restarts: 10,
+echo     min_uptime: '10s',
+echo     max_memory_restart: '1G'
+echo   }]
+echo };
+) > "%FRONTEND_DEPLOY%\ecosystem.config.js"
+
+REM Create logs directory
+if not exist "C:\inetpub\vuteq\logs" mkdir "C:\inetpub\vuteq\logs"
+
+REM Set folder permissions
+echo Setting folder permissions...
+icacls "%FRONTEND_DEPLOY%" /grant "IIS_IUSRS:(OI)(CI)F" /T /Q
+icacls "C:\inetpub\vuteq\logs" /grant "IIS_IUSRS:(OI)(CI)F" /T /Q
+
+echo.
+echo ============================================================================
+echo Frontend Deployment Complete!
+echo ============================================================================
+echo.
+echo Deployed to: %FRONTEND_DEPLOY%
+echo Configuration: %FRONTEND_DEPLOY%\ecosystem.config.js
+echo Environment: %FRONTEND_DEPLOY%\.env.production
+echo Logs: C:\inetpub\vuteq\logs\frontend-*.log
+echo.
+echo Next steps:
+echo   1. Run configure-iis.bat (if not done already)
+echo   2. Run start-services.bat
+echo.
+echo To start the frontend now, run:
+echo   pm2 start "%FRONTEND_DEPLOY%\ecosystem.config.js"
+echo   pm2 save
+echo.
+pause
