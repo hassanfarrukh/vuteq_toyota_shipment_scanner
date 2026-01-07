@@ -34,20 +34,33 @@ echo [1/3] Stopping PM2 Frontend...
 REM Check if PM2 is installed
 where pm2 >nul 2>&1
 if !errorLevel! equ 0 (
-    pm2 stop vuteq-frontend 2>nul
-    if !errorLevel! equ 0 (
+    if "%NOPAUSE_MODE%"=="1" (
+        REM Silent mode: redirect all PM2 output to nul to avoid Unicode issues
+        pm2 stop vuteq-frontend >nul 2>&1
+        pm2 save --force >nul 2>&1
         echo Frontend stopped successfully
     ) else (
-        echo Frontend was not running
+        pm2 stop vuteq-frontend 2>nul
+        if !errorLevel! equ 0 (
+            echo Frontend stopped successfully
+        ) else (
+            echo Frontend was not running
+        )
+        REM Save PM2 process list
+        pm2 save --force
     )
-
-    REM Save PM2 process list
-    pm2 save --force
 ) else (
     echo PM2 not found, skipping frontend stop
 )
 
+if "%NOPAUSE_MODE%"=="1" (
+    echo DEBUG: PM2 section complete
+)
+
 echo.
+if "%NOPAUSE_MODE%"=="1" (
+    echo DEBUG: Starting IIS section
+)
 echo [2/3] Stopping IIS Site...
 %systemroot%\system32\inetsrv\appcmd stop site "%SITE_NAME%"
 
