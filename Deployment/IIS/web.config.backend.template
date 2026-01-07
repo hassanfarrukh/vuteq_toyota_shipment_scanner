@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
 ============================================================================
-VUTEQ Scanner - ASP.NET Core Backend Web.Config Template
+VUTEQ Scanner - ASP.NET Core Backend Web.Config Template (Minimal)
 Author: Hassan
 Date: 2026-01-07
-Description: IIS configuration for hosting ASP.NET Core backend on port 5000
+Description: Bare minimum IIS configuration for ASP.NET Core backend
 ============================================================================
 -->
 <configuration>
@@ -16,33 +16,8 @@ Description: IIS configuration for hosting ASP.NET Core backend on port 5000
       <aspNetCore processPath="dotnet"
                   arguments=".\Backend.dll"
                   stdoutLogEnabled="true"
-                  stdoutLogFile="E:\VuteqDeploy\logs\backend\stdout"
-                  hostingModel="inprocess">
-        <environmentVariables>
-          <environmentVariable name="ASPNETCORE_ENVIRONMENT" value="Production" />
-          <environmentVariable name="ASPNETCORE_URLS" value="http://localhost:5000" />
-        </environmentVariables>
-      </aspNetCore>
-
-      <!-- Security Headers -->
-      <httpProtocol>
-        <customHeaders>
-          <remove name="X-Powered-By" />
-          <add name="X-Content-Type-Options" value="nosniff" />
-          <add name="X-Frame-Options" value="SAMEORIGIN" />
-          <add name="X-XSS-Protection" value="1; mode=block" />
-        </customHeaders>
-      </httpProtocol>
-
-      <!-- Compression -->
-      <urlCompression doStaticCompression="true" doDynamicCompression="true" />
-
-      <!-- Request Limits -->
-      <security>
-        <requestFiltering>
-          <requestLimits maxAllowedContentLength="52428800" />
-        </requestFiltering>
-      </security>
+                  stdoutLogFile=".\logs\stdout"
+                  hostingModel="inprocess" />
     </system.webServer>
   </location>
 </configuration>
