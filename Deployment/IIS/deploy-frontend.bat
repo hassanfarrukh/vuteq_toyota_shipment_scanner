@@ -6,10 +6,18 @@ REM Date: 2026-01-07
 REM Description: Builds and deploys Next.js frontend with PM2
 REM ============================================================================
 
-echo ============================================================================
-echo VUTEQ Scanner - Deploying Frontend
-echo ============================================================================
-echo.
+setlocal enabledelayedexpansion
+
+REM Check if called with nopause parameter
+set "NOPAUSE_MODE=0"
+if /i "%1"=="nopause" set "NOPAUSE_MODE=1"
+
+if "%NOPAUSE_MODE%"=="0" (
+    echo ============================================================================
+    echo VUTEQ Scanner - Deploying Frontend
+    echo ============================================================================
+    echo.
+)
 
 REM Check for administrator privileges
 net session >nul 2>&1
@@ -172,26 +180,31 @@ echo Setting folder permissions...
 icacls "%FRONTEND_DEPLOY%" /grant "IIS_IUSRS:(OI)(CI)F" /T /Q
 icacls "E:\VuteqDeploy\logs" /grant "IIS_IUSRS:(OI)(CI)F" /T /Q
 
-echo.
-echo ============================================================================
-echo Frontend Deployment Complete!
-echo ============================================================================
-echo.
-echo Deployed to: %FRONTEND_DEPLOY%
-echo Configuration: %FRONTEND_DEPLOY%\ecosystem.config.js
-echo Environment: %FRONTEND_DEPLOY%\.env.production
-echo Logs: E:\VuteqDeploy\logs\frontend\frontend-*.log
-echo.
-echo Next steps:
-echo   1. Run configure-iis.bat (if not done already)
-echo   2. Run start-services.bat
-echo.
-echo To start the frontend now, run:
-echo   pm2 start "%FRONTEND_DEPLOY%\ecosystem.config.js"
-echo   pm2 save
-echo.
+if "%NOPAUSE_MODE%"=="0" (
+    echo.
+    echo ============================================================================
+    echo Frontend Deployment Complete!
+    echo ============================================================================
+    echo.
+    echo Deployed to: %FRONTEND_DEPLOY%
+    echo Configuration: %FRONTEND_DEPLOY%\ecosystem.config.js
+    echo Environment: %FRONTEND_DEPLOY%\.env.production
+    echo Logs: E:\VuteqDeploy\logs\frontend\frontend-*.log
+    echo.
+    echo Next steps:
+    echo   1. Run configure-iis.bat (if not done already)
+    echo   2. Run start-services.bat
+    echo.
+    echo To start the frontend now, run:
+    echo   pm2 start "%FRONTEND_DEPLOY%\ecosystem.config.js"
+    echo   pm2 save
+    echo.
+) else (
+    echo Frontend deployed successfully
+)
 
 REM Return to original directory
 cd /d "%SCRIPT_DIR%"
 
+endlocal
 exit /b 0

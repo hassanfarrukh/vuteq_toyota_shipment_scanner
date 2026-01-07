@@ -6,10 +6,18 @@ REM Date: 2026-01-07
 REM Description: Starts all VUTEQ Scanner services (IIS + PM2)
 REM ============================================================================
 
-echo ============================================================================
-echo VUTEQ Scanner - Starting Services
-echo ============================================================================
-echo.
+setlocal
+
+REM Check if called with nopause parameter
+set "NOPAUSE_MODE=0"
+if /i "%1"=="nopause" set "NOPAUSE_MODE=1"
+
+if "%NOPAUSE_MODE%"=="0" (
+    echo ============================================================================
+    echo VUTEQ Scanner - Starting Services
+    echo ============================================================================
+    echo.
+)
 
 REM Check for administrator privileges
 net session >nul 2>&1
@@ -64,54 +72,59 @@ if exist "%FRONTEND_DEPLOY%\ecosystem.config.js" (
     exit /b 1
 )
 
-echo.
-echo [3/4] Checking service status...
-echo.
+if "%NOPAUSE_MODE%"=="0" (
+    echo.
+    echo [3/4] Checking service status...
+    echo.
 
-REM Check IIS site status
-echo IIS Site Status:
-%systemroot%\system32\inetsrv\appcmd list site "%SITE_NAME%"
+    REM Check IIS site status
+    echo IIS Site Status:
+    %systemroot%\system32\inetsrv\appcmd list site "%SITE_NAME%"
 
-echo.
-echo PM2 Process Status:
-pm2 list
+    echo.
+    echo PM2 Process Status:
+    pm2 list
 
-echo.
-echo [4/4] Testing endpoints...
-echo.
+    echo.
+    echo [4/4] Testing endpoints...
+    echo.
 
-REM Wait for services to fully start
-ping localhost -n 6 >nul
+    REM Wait for services to fully start
+    ping localhost -n 6 >nul
 
-REM Test frontend
-echo Testing Frontend (http://localhost:3000)...
-powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:3000' -UseBasicParsing; Write-Host 'Frontend: OK (Status:' $r.StatusCode ')' -ForegroundColor Green } catch { Write-Host 'Frontend: FAILED' -ForegroundColor Red }"
+    REM Test frontend
+    echo Testing Frontend (http://localhost:3000)...
+    powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:3000' -UseBasicParsing; Write-Host 'Frontend: OK (Status:' $r.StatusCode ')' -ForegroundColor Green } catch { Write-Host 'Frontend: FAILED' -ForegroundColor Red }"
 
-echo.
-echo Testing Backend (http://localhost:5000/api)...
-powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:5000/api' -UseBasicParsing; Write-Host 'Backend: OK (Status:' $r.StatusCode ')' -ForegroundColor Green } catch { Write-Host 'Backend: FAILED' -ForegroundColor Red }"
+    echo.
+    echo Testing Backend (http://localhost:5000/api)...
+    powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:5000/api' -UseBasicParsing; Write-Host 'Backend: OK (Status:' $r.StatusCode ')' -ForegroundColor Green } catch { Write-Host 'Backend: FAILED' -ForegroundColor Red }"
 
-echo.
-echo Testing IIS Proxy (http://localhost)...
-powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost' -UseBasicParsing; Write-Host 'IIS Proxy: OK (Status:' $r.StatusCode ')' -ForegroundColor Green } catch { Write-Host 'IIS Proxy: FAILED' -ForegroundColor Red }"
+    echo.
+    echo Testing IIS Proxy (http://localhost)...
+    powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost' -UseBasicParsing; Write-Host 'IIS Proxy: OK (Status:' $r.StatusCode ')' -ForegroundColor Green } catch { Write-Host 'IIS Proxy: FAILED' -ForegroundColor Red }"
 
-echo.
-echo ============================================================================
-echo Services Started!
-echo ============================================================================
-echo.
-echo Access the application at: http://localhost
-echo.
-echo Service Management:
-echo   - View PM2 logs: pm2 logs vuteq-frontend
-echo   - View PM2 status: pm2 status
-echo   - Restart frontend: pm2 restart vuteq-frontend
-echo   - Stop all: run stop-services.bat
-echo.
-echo Log locations:
-echo   - Frontend: E:\VuteqDeploy\logs\frontend\frontend-*.log
-echo   - Backend: E:\VuteqDeploy\logs\backend\backend.log
-echo   - IIS: E:\VuteqDeploy\backend\logs\stdout_*.log
-echo.
+    echo.
+    echo ============================================================================
+    echo Services Started!
+    echo ============================================================================
+    echo.
+    echo Access the application at: http://localhost
+    echo.
+    echo Service Management:
+    echo   - View PM2 logs: pm2 logs vuteq-frontend
+    echo   - View PM2 status: pm2 status
+    echo   - Restart frontend: pm2 restart vuteq-frontend
+    echo   - Stop all: run stop-services.bat
+    echo.
+    echo Log locations:
+    echo   - Frontend: E:\VuteqDeploy\logs\frontend\frontend-*.log
+    echo   - Backend: E:\VuteqDeploy\logs\backend\backend.log
+    echo   - IIS: E:\VuteqDeploy\backend\logs\stdout_*.log
+    echo.
+) else (
+    echo Services started successfully
+)
 
+endlocal
 exit /b 0

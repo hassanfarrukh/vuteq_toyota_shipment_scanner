@@ -6,10 +6,18 @@ REM Date: 2026-01-07
 REM Description: Builds and deploys ASP.NET Core backend to IIS
 REM ============================================================================
 
-echo ============================================================================
-echo VUTEQ Scanner - Deploying Backend
-echo ============================================================================
-echo.
+setlocal enabledelayedexpansion
+
+REM Check if called with nopause parameter
+set "NOPAUSE_MODE=0"
+if /i "%1"=="nopause" set "NOPAUSE_MODE=1"
+
+if "%NOPAUSE_MODE%"=="0" (
+    echo ============================================================================
+    echo VUTEQ Scanner - Deploying Backend
+    echo ============================================================================
+    echo.
+)
 
 REM Check for administrator privileges
 net session >nul 2>&1
@@ -145,22 +153,27 @@ icacls "E:\VuteqDeploy\logs" /grant "NETWORK SERVICE:(OI)(CI)F" /T /Q
 
 echo Permissions set successfully
 
-echo.
-echo ============================================================================
-echo Backend Deployment Complete!
-echo ============================================================================
-echo.
-echo Deployed to: %BACKEND_DEPLOY%
-echo Configuration: %BACKEND_DEPLOY%\appsettings.Production.json
-echo Logs: E:\VuteqDeploy\logs\backend\backend.log
-echo.
-echo Next steps:
-echo   1. Run deploy-frontend.bat
-echo   2. Run configure-iis.bat (if not done already)
-echo   3. Run start-services.bat
-echo.
+if "%NOPAUSE_MODE%"=="0" (
+    echo.
+    echo ============================================================================
+    echo Backend Deployment Complete!
+    echo ============================================================================
+    echo.
+    echo Deployed to: %BACKEND_DEPLOY%
+    echo Configuration: %BACKEND_DEPLOY%\appsettings.Production.json
+    echo Logs: E:\VuteqDeploy\logs\backend\backend.log
+    echo.
+    echo Next steps:
+    echo   1. Run deploy-frontend.bat
+    echo   2. Run configure-iis.bat (if not done already)
+    echo   3. Run start-services.bat
+    echo.
+) else (
+    echo Backend deployed successfully
+)
 
 REM Return to original directory
 cd /d "%SCRIPT_DIR%"
 
+endlocal
 exit /b 0
