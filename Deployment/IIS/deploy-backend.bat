@@ -143,11 +143,19 @@ if not exist "E:\VuteqDeploy\logs\backend" mkdir "E:\VuteqDeploy\logs\backend"
 REM Copy clean web.config template (prevents n++ corruption from auto-generated config)
 echo.
 echo Copying clean web.config template...
+echo DEBUG: SCRIPT_DIR = %SCRIPT_DIR%
+echo DEBUG: Looking for template at: %SCRIPT_DIR%web.config.backend.template
 if exist "%SCRIPT_DIR%web.config.backend.template" (
-    copy /Y "%SCRIPT_DIR%web.config.backend.template" "%BACKEND_DEPLOY%\web.config" >nul
-    echo Clean web.config deployed (prevents n++ corruption)
+    echo DEBUG: Template found, copying...
+    copy /Y "%SCRIPT_DIR%web.config.backend.template" "%BACKEND_DEPLOY%\web.config"
+    if %errorLevel% equ 0 (
+        echo Clean web.config deployed successfully (prevents n++ corruption)
+    ) else (
+        echo ERROR: Failed to copy web.config template
+    )
 ) else (
-    echo WARNING: web.config.backend.template not found - using auto-generated web.config
+    echo WARNING: web.config.backend.template not found at expected location
+    echo WARNING: Using auto-generated web.config instead
 )
 
 echo.
