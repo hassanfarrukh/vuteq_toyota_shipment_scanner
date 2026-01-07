@@ -27,7 +27,8 @@ if %errorLevel% neq 0 goto :NO_ADMIN
 set FRONTEND_DEPLOY=E:\VuteqDeploy\frontend
 set SITE_NAME=VUTEQ Scanner
 
-echo [1/4] Starting IIS Site...
+echo [1/4] Starting IIS App Pool and Site...
+%systemroot%\system32\inetsrv\appcmd start apppool "VuteqBackendPool"
 %systemroot%\system32\inetsrv\appcmd start site "%SITE_NAME%"
 if %errorLevel% equ 0 goto :IIS_OK
 echo WARNING: Failed to start IIS site

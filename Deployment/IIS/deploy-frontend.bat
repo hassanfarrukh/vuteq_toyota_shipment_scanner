@@ -143,7 +143,7 @@ echo.
 echo Creating production environment configuration...
 (
 echo NODE_ENV=production
-echo NEXT_PUBLIC_API_URL=http://localhost/api
+echo NEXT_PUBLIC_API_URL=http://localhost
 echo PORT=3000
 echo HOSTNAME=localhost
 ) > "%FRONTEND_DEPLOY%\.env.production"

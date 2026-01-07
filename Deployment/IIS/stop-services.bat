@@ -60,9 +60,10 @@ REM Step 2: Stop IIS Site
 REM ============================================================================
 :DO_IIS
 echo.
-echo [2/3] Stopping IIS Site...
+echo [2/3] Stopping IIS Site and App Pool...
 %systemroot%\system32\inetsrv\appcmd stop site "%SITE_NAME%" >nul 2>&1
-echo IIS Site stopped
+%systemroot%\system32\inetsrv\appcmd stop apppool "VuteqBackendPool" >nul 2>&1
+echo IIS Site and App Pool stopped
 
 REM Check if we should show status
 if "%NOPAUSE_MODE%"=="1" goto :SILENT_END
