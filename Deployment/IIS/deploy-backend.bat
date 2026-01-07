@@ -130,7 +130,8 @@ echo   },
 echo   "Cors": {
 echo     "AllowedOrigins": [
 echo       "http://localhost",
-echo       "http://127.0.0.1"
+echo       "http://127.0.0.1",
+echo       "http://10.1.10.39"
 echo     ]
 echo   }
 echo }

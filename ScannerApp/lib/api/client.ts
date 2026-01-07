@@ -4,9 +4,12 @@
  * Date: 2025-11-24
  * Updated: 2025-11-24 - Enhanced error handling for ECONNREFUSED
  * Updated: 2025-11-25 - Added comprehensive file logging for debugging API requests
+ * Updated: 2026-01-07 - Smart port detection for Docker dev vs IIS production
  *
  * Axios instance configured for backend API with:
- * - Base URL: http://localhost:5000 (configurable via NEXT_PUBLIC_API_URL)
+ * - Base URL: Auto-detected based on current port
+ *   - Port 3000 (Docker dev): Backend on localhost:5000
+ *   - Port 80/443 (IIS prod): Same origin (IIS proxies /api to backend)
  * - JWT token interceptor
  * - Error handling and response transformation
  */
@@ -14,34 +17,31 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { clientLogger } from '@/lib/logger';
 
-// API Base URL - Runtime Dynamic Configuration
-// This approach allows the app to work on ANY machine without hardcoding IP addresses
-// Priority:
-// 1. NEXT_PUBLIC_API_URL environment variable (if explicitly set)
-// 2. Runtime detection based on window.location (browser client-side)
-// 3. Fallback to localhost for SSR/build time
+// API Base URL - Runtime Dynamic Configuration with Smart Port Detection
+// This approach allows the app to work in BOTH Docker dev and IIS production:
+// - Docker dev: Frontend on port 3000, Backend on port 5000 (separate containers)
+// - IIS prod: Everything through port 80, IIS routes /api/* to backend
 
 function getApiBaseUrl(): string {
-  // If explicitly set in environment, use it (allows override)
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-
   // Runtime detection (client-side only)
   if (typeof window !== 'undefined') {
-    const protocol = window.location.protocol; // http: or https:
-    const hostname = window.location.hostname; // IP address or domain
+    const port = window.location.port;
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
 
-    // If accessing via localhost, API is on localhost:5000
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    // Development mode: Frontend running on port 3000
+    // Backend is on separate port 5000
+    if (port === '3000') {
       return 'http://localhost:5000';
     }
 
-    // If accessing via IP address or domain, API is on same host:5000
-    return `${protocol}//${hostname}:5000`;
+    // Production mode (IIS): Port 80 (empty string) or 443
+    // IIS handles routing - /api/* goes to ASP.NET Core backend
+    // Use same origin as the page
+    return window.location.origin;
   }
 
-  // Fallback for SSR/build time (will be replaced at runtime in browser)
+  // Fallback for SSR/build time - use localhost:5000 for server-side API calls
   return 'http://localhost:5000';
 }
 

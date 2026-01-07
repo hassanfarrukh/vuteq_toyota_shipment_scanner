@@ -141,9 +141,11 @@ if exist "%TEMP%\vuteq_node_modules" (
 REM Create production environment file
 echo.
 echo Creating production environment configuration...
+REM NOTE: NEXT_PUBLIC_API_URL is NOT set - client.ts uses smart port detection:
+REM   - Port 3000 (dev): Uses localhost:5000
+REM   - Port 80/443 (IIS): Uses same origin (window.location.origin)
 (
 echo NODE_ENV=production
-echo NEXT_PUBLIC_API_URL=http://localhost
 echo PORT=3000
 echo HOSTNAME=localhost
 ) > "%FRONTEND_DEPLOY%\.env.production"
