@@ -58,7 +58,8 @@ echo.
 echo [3/7] Installing dependencies...
 cd /d "%FRONTEND_SOURCE%"
 
-REM Install dependencies
+REM Clean node_modules and reinstall
+if exist "node_modules" rmdir /s /q "node_modules"
 call npm install
 
 if %errorLevel% neq 0 (
@@ -71,6 +72,9 @@ echo [4/7] Building Next.js application...
 
 REM Set production environment
 set NODE_ENV=production
+
+REM Clean previous build
+if exist ".next" rmdir /s /q ".next"
 
 REM Build Next.js
 call npm run build
