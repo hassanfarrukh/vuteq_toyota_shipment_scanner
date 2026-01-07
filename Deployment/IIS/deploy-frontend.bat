@@ -195,4 +195,5 @@ REM Return to original directory
 cd /d "%SCRIPT_DIR%"
 
 REM Only pause if run directly (not called from another script)
-if "%1"=="" pause
+if not "%1"=="nopause" pause
+exit /b 0
