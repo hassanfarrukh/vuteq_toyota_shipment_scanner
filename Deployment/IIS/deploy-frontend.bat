@@ -115,10 +115,17 @@ REM Create deployment directory
 mkdir "%FRONTEND_DEPLOY%"
 
 REM Copy all files except development artifacts
-xcopy "%FRONTEND_SOURCE%" "%FRONTEND_DEPLOY%" /E /I /Q /EXCLUDE:%~dp0exclude_frontend.txt 2>nul
-if not exist "%~dp0exclude_frontend.txt" (
-    REM Copy everything if exclude file doesn't exist
-    xcopy "%FRONTEND_SOURCE%" "%FRONTEND_DEPLOY%" /E /I /Q
+REM Using robocopy for reliable copying of all files including BUILD_ID
+if exist "%~dp0exclude_frontend.txt" (
+    robocopy "%FRONTEND_SOURCE%" "%FRONTEND_DEPLOY%" /E /COPYALL /R:3 /W:5 /XF exclude_frontend.txt /NFL /NDL /NJH /NJS
+) else (
+    REM Copy everything if exclude file doesn't exist - ensures BUILD_ID and all .next files are copied
+    robocopy "%FRONTEND_SOURCE%" "%FRONTEND_DEPLOY%" /E /COPYALL /R:3 /W:5 /NFL /NDL /NJH /NJS
+)
+REM robocopy returns 0-7 for success (0=no changes, 1=files copied, 2=extra files, etc.)
+if %errorLevel% geq 8 (
+    echo ERROR: File copy failed!
+    exit /b 1
 )
 
 REM Restore node_modules if preserved
