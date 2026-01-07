@@ -3,8 +3,6 @@
 # Production Docker Compose for VUTEQ Scanner
 # SQL Server runs on Windows host (NOT in Docker)
 
-version: '3.8'
-
 services:
   # ASP.NET Core API Backend
   api:
@@ -33,8 +31,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    depends_on:
-      - nginx
 
   # Next.js Frontend
   frontend:
