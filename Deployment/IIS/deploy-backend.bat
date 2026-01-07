@@ -140,6 +140,16 @@ echo Production configuration created
 REM Create logs directory
 if not exist "E:\VuteqDeploy\logs\backend" mkdir "E:\VuteqDeploy\logs\backend"
 
+REM Copy clean web.config template (prevents n++ corruption from auto-generated config)
+echo.
+echo Copying clean web.config template...
+if exist "%SCRIPT_DIR%web.config.backend.template" (
+    copy /Y "%SCRIPT_DIR%web.config.backend.template" "%BACKEND_DEPLOY%\web.config" >nul
+    echo Clean web.config deployed (prevents n++ corruption)
+) else (
+    echo WARNING: web.config.backend.template not found - using auto-generated web.config
+)
+
 echo.
 echo [6/6] Setting folder permissions...
 
