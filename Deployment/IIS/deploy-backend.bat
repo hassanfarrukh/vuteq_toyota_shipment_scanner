@@ -92,6 +92,7 @@ if exist "%BACKEND_DEPLOY%" (
 
 REM Create deployment directory
 mkdir "%BACKEND_DEPLOY%"
+mkdir "%BACKEND_DEPLOY%\logs"
 
 REM Copy published files
 xcopy "%BACKEND_SOURCE%\publish" "%BACKEND_DEPLOY%" /E /I /Q
@@ -143,10 +144,7 @@ if not exist "E:\VuteqDeploy\logs\backend" mkdir "E:\VuteqDeploy\logs\backend"
 REM Copy clean web.config template (prevents n++ corruption from auto-generated config)
 echo.
 echo Copying clean web.config template...
-echo DEBUG: SCRIPT_DIR = %SCRIPT_DIR%
-echo DEBUG: Looking for template at: %SCRIPT_DIR%web.config.backend.template
 if exist "%SCRIPT_DIR%web.config.backend.template" (
-    echo DEBUG: Template found, copying...
     copy /Y "%SCRIPT_DIR%web.config.backend.template" "%BACKEND_DEPLOY%\web.config"
     if %errorLevel% equ 0 (
         echo Clean web.config deployed successfully (prevents n++ corruption)
