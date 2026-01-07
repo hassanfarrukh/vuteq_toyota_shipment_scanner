@@ -55,11 +55,11 @@ echo STEP 1/5: Stopping existing services
 echo ============================================================================
 echo.
 
-call stop-services.bat
+call stop-services.bat nopause
 
 echo.
 echo Waiting 5 seconds for services to stop...
-timeout /t 5 /nobreak >nul
+ping localhost -n 6 >nul
 
 echo.
 echo ============================================================================
@@ -67,7 +67,7 @@ echo STEP 2/5: Deploying Backend
 echo ============================================================================
 echo.
 
-call deploy-backend.bat
+call deploy-backend.bat nopause
 
 if %errorLevel% neq 0 (
     echo.
@@ -83,7 +83,7 @@ echo STEP 3/5: Deploying Frontend
 echo ============================================================================
 echo.
 
-call deploy-frontend.bat
+call deploy-frontend.bat nopause
 
 if %errorLevel% neq 0 (
     echo.
@@ -124,7 +124,7 @@ echo STEP 5/5: Starting Services
 echo ============================================================================
 echo.
 
-call start-services.bat
+call start-services.bat nopause
 
 if %errorLevel% neq 0 (
     echo.
@@ -138,7 +138,7 @@ echo STEP 6/6: Verifying Deployment
 echo ============================================================================
 echo.
 
-timeout /t 10 /nobreak >nul
+ping localhost -n 11 >nul
 
 REM Verification tests
 echo Running verification tests...

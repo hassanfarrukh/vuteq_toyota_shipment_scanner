@@ -20,8 +20,9 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-REM Configuration
-set FRONTEND_SOURCE=D:\VUTEQ\FromHassan\Codes\ScannerApp
+REM Configuration - Use relative paths from script location
+set SCRIPT_DIR=%~dp0
+set FRONTEND_SOURCE=%SCRIPT_DIR%..\..\ScannerApp
 set DEPLOY_ROOT=C:\inetpub\vuteq
 set FRONTEND_DEPLOY=%DEPLOY_ROOT%\frontend
 set BACKUP_ROOT=%DEPLOY_ROOT%\backups
@@ -189,4 +190,7 @@ echo To start the frontend now, run:
 echo   pm2 start "%FRONTEND_DEPLOY%\ecosystem.config.js"
 echo   pm2 save
 echo.
-pause
+
+REM Only pause if run directly (not called from another script)
+if "%1"=="" pause
+if not "%1"=="nopause" if "%1"=="" pause

@@ -20,8 +20,9 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-REM Configuration
-set BACKEND_SOURCE=D:\VUTEQ\FromHassan\Codes\Backend
+REM Configuration - Use relative paths from script location
+set SCRIPT_DIR=%~dp0
+set BACKEND_SOURCE=%SCRIPT_DIR%..\..\Backend
 set DEPLOY_ROOT=C:\inetpub\vuteq
 set BACKEND_DEPLOY=%DEPLOY_ROOT%\backend
 set BACKUP_ROOT=%DEPLOY_ROOT%\backups
@@ -161,4 +162,7 @@ echo   1. Run deploy-frontend.bat
 echo   2. Run configure-iis.bat (if not done already)
 echo   3. Run start-services.bat
 echo.
-pause
+
+REM Only pause if run directly (not called from another script)
+if "%1"=="" pause
+if not "%1"=="nopause" if "%1"=="" pause

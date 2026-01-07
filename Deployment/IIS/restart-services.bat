@@ -21,15 +21,15 @@ if %errorLevel% neq 0 (
 )
 
 echo [1/2] Stopping services...
-call stop-services.bat
+call stop-services.bat nopause
 
 echo.
 echo Waiting 5 seconds before restart...
-timeout /t 5 /nobreak >nul
+ping localhost -n 6 >nul
 
 echo.
 echo [2/2] Starting services...
-call start-services.bat
+call start-services.bat nopause
 
 echo.
 echo ============================================================================

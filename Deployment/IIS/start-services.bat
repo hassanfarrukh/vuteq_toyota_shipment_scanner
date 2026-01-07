@@ -84,7 +84,7 @@ echo [4/4] Testing endpoints...
 echo.
 
 REM Wait for services to fully start
-timeout /t 5 /nobreak >nul
+ping localhost -n 6 >nul
 
 REM Test frontend
 echo Testing Frontend (http://localhost:3000)...
@@ -116,4 +116,7 @@ echo   - Frontend: C:\inetpub\vuteq\logs\frontend-*.log
 echo   - Backend: C:\inetpub\vuteq\logs\backend.log
 echo   - IIS: C:\inetpub\vuteq\backend\logs\stdout_*.log
 echo.
-pause
+
+REM Only pause if run directly (not called from another script)
+if "%1"=="" pause
+if not "%1"=="nopause" if "%1"=="" pause
