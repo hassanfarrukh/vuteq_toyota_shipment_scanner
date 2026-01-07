@@ -46,18 +46,18 @@ where pm2 >nul 2>&1
 if %errorLevel% neq 0 goto :NO_PM2
 
 REM Delete existing process if running
-pm2 delete vuteq-frontend >nul 2>&1
+call pm2 delete vuteq-frontend >nul 2>&1
 
 REM Check if ecosystem config exists
 if not exist "%FRONTEND_DEPLOY%\ecosystem.config.js" goto :NO_ECOSYSTEM
 
 REM Start frontend using ecosystem config
 cd /d "%FRONTEND_DEPLOY%"
-pm2 start ecosystem.config.js >nul 2>&1
+call pm2 start ecosystem.config.js >nul 2>&1
 if %errorLevel% neq 0 goto :PM2_FAILED
 
 echo Frontend started successfully
-pm2 save --force >nul 2>&1
+call pm2 save --force >nul 2>&1
 goto :CHECK_STATUS
 
 :PM2_FAILED
@@ -93,7 +93,7 @@ echo IIS Site Status:
 
 echo.
 echo PM2 Process Status:
-pm2 list
+call pm2 list
 
 echo.
 echo [4/4] Testing endpoints...

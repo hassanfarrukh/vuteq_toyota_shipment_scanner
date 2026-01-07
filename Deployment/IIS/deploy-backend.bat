@@ -71,7 +71,7 @@ if exist "bin\Release" rmdir /s /q "bin\Release"
 if exist "publish" rmdir /s /q "publish"
 
 REM Build and publish
-dotnet publish -c Release -o publish --no-self-contained
+call dotnet publish -c Release -o publish --no-self-contained
 
 if %errorLevel% neq 0 (
     echo ERROR: Build failed!
