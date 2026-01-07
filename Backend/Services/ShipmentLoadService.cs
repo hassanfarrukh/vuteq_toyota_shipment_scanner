@@ -5,6 +5,7 @@
 // Updated: 2025-12-24 - Fixed skid build exceptions not being included in Toyota shipment load payload
 // Updated: 2025-12-24 - Fixed exception code mapping: Skid Build code 12 -> Shipment Load code 24 at trailer level
 // Updated: 2026-01-04 - Fixed Toyota duplicate skid issue: Group by (PalletizationCode + RawSkidId) to send one skid per manifest
+// Updated: 2026-01-06 - Fixed BuildSkidExceptions to filter out ALL Skid Build Order Level codes (10, 11, 12, 20, 26)
 // Description: Service for Shipment Load operations - Toyota SCS integration with session management
 
 using Backend.Models;
@@ -1064,7 +1065,7 @@ public class ShipmentLoadService : IShipmentLoadService
     /// <summary>
     /// Build exceptions list for a specific skid
     /// Combines both shipment load exceptions and skid build exceptions
-    /// Filters out shortage exceptions (code 12/24) - these go to trailer level only
+    /// Filters out Skid Build Order Level codes (10, 11, 12, 20, 26) - these should NOT pass to Shipment Load Skid Level
     /// Only includes valid Shipment Load skid-level codes: 14, 15, 18, 19, 21, 22, 23
     /// </summary>
     /// <param name="scan">The skid scan record</param>
@@ -1081,6 +1082,14 @@ public class ShipmentLoadService : IShipmentLoadService
         // Valid skid-level exception codes for Shipment Load
         var validSkidLevelCodes = new HashSet<string> { "14", "15", "18", "19", "21", "22", "23" };
 
+        // Skid Build Order Level codes that should NOT pass to Shipment Load Skid Level
+        // Code 10: Revised Quantity (Toyota Reduction)
+        // Code 11: Modified Quantity per Box
+        // Code 12: Supplier Revised Shortage (maps to Code 24 at Trailer Level)
+        // Code 20: Non-Standard Packaging (Expendable)
+        // Code 26: Others
+        var skidBuildOrderLevelCodes = new HashSet<string> { "10", "11", "12", "20", "26" };
+
         // Add shipment load exceptions that match this skid's RawSkidId
         // Filter out code 24 (shortage) - it belongs at trailer level only
         var shipmentExceptions = shipmentLoadExceptions
@@ -1096,12 +1105,13 @@ public class ShipmentLoadService : IShipmentLoadService
         // Add skid build exceptions for this skid
         // Match by SkidNumber (the numeric part without side, e.g., "001" matches "001A")
         // OR if exception has no SkidNumber (order-level exception), include it for all skids
-        // Filter out code 12 (shortage) - it gets mapped to code 24 and moved to trailer level
-        // Map other codes if needed (currently no other mappings needed)
+        // Filter out ALL Skid Build Order Level codes (10, 11, 12, 20, 26)
+        // These codes are for Order Level only and should not appear at Shipment Load Skid Level
+        // Code 12 additionally gets mapped to code 24 and moved to trailer level (handled in BuildToyotaPayloadAsync)
         var skidExceptions = skidBuildExceptions
             .Where(e => (e.SkidNumber == null || // Order-level exception - include for all skids
                         e.SkidNumber.Value.ToString().PadLeft(3, '0') == scan.SkidNumber.ToString().PadLeft(3, '0')) && // Skid-level exception matching this skid
-                        e.ExceptionCode != "12") // Filter out shortage - goes to trailer level as code 24
+                        !skidBuildOrderLevelCodes.Contains(e.ExceptionCode)) // Filter out ALL Order Level codes
             .Select(e => new ToyotaException
             {
                 ExceptionCode = MapSkidBuildToShipmentLoadCode(e.ExceptionCode),
