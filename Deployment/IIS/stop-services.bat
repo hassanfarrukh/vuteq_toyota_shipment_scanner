@@ -39,15 +39,15 @@ REM PM2 is installed, stop frontend
 if "%NOPAUSE_MODE%"=="1" goto :PM2_SILENT
 
 REM Normal mode with output
-pm2 stop vuteq-frontend 2>nul
+call pm2 stop vuteq-frontend 2>nul
 echo Frontend stopped
-pm2 save --force >nul 2>&1
+call pm2 save --force >nul 2>&1
 goto :DO_IIS
 
 :PM2_SILENT
 REM Silent mode: redirect all output
-pm2 stop vuteq-frontend >nul 2>&1
-pm2 save --force >nul 2>&1
+call pm2 stop vuteq-frontend >nul 2>&1
+call pm2 save --force >nul 2>&1
 echo Frontend stopped
 goto :DO_IIS
 
@@ -82,7 +82,7 @@ echo PM2 Process Status:
 where pm2 >nul 2>&1
 if %errorLevel% neq 0 goto :NO_PM2_STATUS
 
-pm2 list
+call pm2 list
 goto :SHOW_HELP
 
 :NO_PM2_STATUS
