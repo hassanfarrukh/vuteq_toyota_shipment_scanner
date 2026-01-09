@@ -1126,8 +1126,8 @@ export default function AdministrationPage() {
                     <p className="text-lg">No offices found</p>
                   </div>
                 ) : (
-                  <div className="w-full">
-                    <table className="w-full table-fixed divide-y divide-gray-200">
+                  <div className="w-full overflow-x-auto">
+                    <table className="w-full table-fixed divide-y divide-gray-200" style={{minWidth: '1440px'}}>
                       <colgroup>
                         <col style={{width: '80px'}} />
                         <col style={{width: '180px'}} />
@@ -1175,13 +1175,15 @@ export default function AdministrationPage() {
                                 <i className="fa fa-xmark text-red-600 text-lg"></i>
                               )}
                             </td>
-                            <td className="sticky right-0 bg-white px-6 py-4 text-right text-base shadow-[-4px_0_4px_-4px_rgba(0,0,0,0.1)]">
-                              <button onClick={() => handleEditOffice(office.id)} className="text-primary-600 hover:text-primary-900 mr-3">
-                                <i className="fa-light fa-edit text-blue-600" style={{ fontSize: '20px' }}></i>
-                              </button>
-                              <button onClick={() => handleDeleteOffice(office.id)} className="text-error-600 hover:text-error-900">
-                                <i className="fa-light fa-trash text-red-600" style={{ fontSize: '20px' }}></i>
-                              </button>
+                            <td className="sticky right-0 bg-white px-6 py-4 shadow-[-4px_0_4px_-4px_rgba(0,0,0,0.1)]">
+                              <div className="flex items-center justify-end gap-3">
+                                <button onClick={() => handleEditOffice(office.id)} className="text-primary-600 hover:text-primary-900">
+                                  <i className="fa-light fa-edit text-blue-600" style={{ fontSize: '20px' }}></i>
+                                </button>
+                                <button onClick={() => handleDeleteOffice(office.id)} className="text-error-600 hover:text-error-900">
+                                  <i className="fa-light fa-trash text-red-600" style={{ fontSize: '20px' }}></i>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1229,8 +1231,8 @@ export default function AdministrationPage() {
                     <p className="text-lg">No warehouses found</p>
                   </div>
                 ) : (
-                  <div className="w-full">
-                    <table className="w-full table-fixed divide-y divide-gray-200">
+                  <div className="w-full overflow-x-auto">
+                    <table className="w-full table-fixed divide-y divide-gray-200" style={{minWidth: '1520px'}}>
                       <colgroup>
                         <col style={{width: '100px'}} />
                         <col style={{width: '200px'}} />
@@ -1281,13 +1283,15 @@ export default function AdministrationPage() {
                                 <i className="fa fa-xmark text-red-600 text-lg"></i>
                               )}
                             </td>
-                            <td className="sticky right-0 bg-white px-6 py-4 text-right text-base shadow-[-4px_0_4px_-4px_rgba(0,0,0,0.1)]">
-                              <button onClick={() => handleEditWarehouse(warehouse.id)} className="text-primary-600 hover:text-primary-900 mr-3">
-                                <i className="fa-light fa-edit text-blue-600" style={{ fontSize: '20px' }}></i>
-                              </button>
-                              <button onClick={() => handleDeleteWarehouse(warehouse.id)} className="text-error-600 hover:text-error-900">
-                                <i className="fa-light fa-trash text-red-600" style={{ fontSize: '20px' }}></i>
-                              </button>
+                            <td className="sticky right-0 bg-white px-6 py-4 shadow-[-4px_0_4px_-4px_rgba(0,0,0,0.1)]">
+                              <div className="flex items-center justify-end gap-3">
+                                <button onClick={() => handleEditWarehouse(warehouse.id)} className="text-primary-600 hover:text-primary-900">
+                                  <i className="fa-light fa-edit text-blue-600" style={{ fontSize: '20px' }}></i>
+                                </button>
+                                <button onClick={() => handleDeleteWarehouse(warehouse.id)} className="text-error-600 hover:text-error-900">
+                                  <i className="fa-light fa-trash text-red-600" style={{ fontSize: '20px' }}></i>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1335,8 +1339,8 @@ export default function AdministrationPage() {
                     <p className="text-lg">No users found</p>
                   </div>
                 ) : (
-                  <div className="w-full">
-                    <table className="w-full table-fixed divide-y divide-gray-200">
+                  <div className="w-full overflow-x-auto">
+                    <table className="w-full table-fixed divide-y divide-gray-200" style={{minWidth: '1360px'}}>
                       <colgroup>
                         <col style={{width: '120px'}} />
                         <col style={{width: '160px'}} />

@@ -7,7 +7,8 @@
  */
 
 // ===== LOCATION TYPES =====
-export type LocationType = 'INDIANA' | 'MICHIGAN' | 'OHIO' | 'KENTUCKY' | 'TENNESSEE' | 'ALABAMA';
+// Updated: 2026-01-09 - Issue #5: Changed from state names to actual site names (Hassan)
+export type LocationType = 'VOSC' | 'Vuteq KY' | 'AL Off Site' | 'DV-IN' | 'DV-MS' | 'Vutex';
 
 export interface Location {
   id: string;

@@ -89,7 +89,7 @@
  * PARSERS:
  * - parseQRCode: Parses Toyota Manifest QR (44 chars, fixed positions)
  * - parseToyotaKanban: Parses Toyota Kanban QR (200+ chars, fixed positions)
- * - parseInternalKanban: Parses internal kanban format (PART/KANBAN/SERIAL)
+ * - parseInternalKanban: Parses internal kanban format (Fixed Position: 12-char Part + 4-char Kanban + Serial)
  *
  * UI LAYOUT:
  * ┌─────────────────────────────────────────┐
@@ -200,9 +200,12 @@ interface ParsedToyotaKanban {
 }
 
 interface InternalKanbanParsed {
-  toyotaKanban: string;
-  internalKanban: string;
-  serialNumber: string;
+  partNumber: string;      // Position 1-12 (12 chars) - renamed from toyotaKanban
+  kanbanCode: string;      // Position 13-17 (5 chars) - renamed from internalKanban
+  serialNumber: string;    // Position 18+ (variable)
+  // Legacy aliases for backwards compatibility
+  toyotaKanban: string;    // Alias for partNumber
+  internalKanban: string;  // Alias for kanbanCode
 }
 
 interface PlannedItem {
@@ -488,28 +491,92 @@ const parseToyotaKanban = (qrValue: string): ParsedToyotaKanban | null => {
 };
 
 /**
- * Parse Internal Kanban format: PART/KANBAN/SERIAL
+ * Parse Internal Kanban scanned value into components
+ * Issue #2 Fix: Updated to use fixed-position format instead of slash-separated
+ *
+ * NEW Format (Fixed Position):
+ *   Position 1-12:   Part Number (12 chars)
+ *   Position 13-17:  Kanban Code (5 chars, may contain space)
+ *   Position 18+:    Serial Number (variable, typically 7 chars)
+ *
+ * Examples:
+ *   "627300820100 HM550004771" -> Part: 627300820100, Kanban: HM55, Serial: 0004771
+ *   "627300820100HM550004771"  -> Part: 627300820100, Kanban: HM55, Serial: 0004771
+ *
  * Author: Hassan
+ * Updated: 2026-01-09 - Fixed-position parsing (Issue #2)
  */
 const parseInternalKanban = (scanned: string): InternalKanbanParsed | null => {
-  const parts = scanned.split('/');
-
-  if (parts.length !== 3) {
+  if (!scanned || scanned.trim().length === 0) {
     return null;
   }
 
-  const toyotaKanban = parts[0]?.trim();
-  const internalKanban = parts[1]?.trim();
-  const serialNumber = parts[2]?.trim();
+  const kanban = scanned.trim();
 
-  if (!toyotaKanban || !internalKanban || !serialNumber) {
+  // Minimum length: 12 (part) + 4 (kanban code min) + 1 (serial min) = 17
+  if (kanban.length < 17) {
+    console.warn(`Internal Kanban too short (min 17 chars): '${kanban}'`);
     return null;
   }
+
+  // Parse fixed positions
+  // Part Number: First 12 characters
+  const partNumber = kanban.substring(0, 12);
+
+  // The remaining part contains Kanban Code + Serial
+  // Format could be "627300820100 HM550004771" (with space) or "627300820100HM550004771" (no space)
+  const remaining = kanban.substring(12);
+
+  let kanbanCode: string;
+  let serialNumber: string;
+
+  // If there's a space, split by it
+  if (remaining.includes(' ')) {
+    const parts = remaining.split(' ').filter(p => p.length > 0);
+    if (parts.length >= 2) {
+      // First part is Kanban Code, rest is Serial
+      kanbanCode = parts[0].trim();
+      serialNumber = parts.slice(1).join('').trim();
+    } else if (parts.length === 1) {
+      // Only one part after split - assume it's KanbanCode+Serial combined
+      const combined = parts[0];
+      if (combined.length >= 5) {
+        kanbanCode = combined.substring(0, 4).trim();
+        serialNumber = combined.substring(4).trim();
+      } else {
+        console.warn(`Cannot parse Kanban Code and Serial from: '${combined}'`);
+        return null;
+      }
+    } else {
+      console.warn(`Cannot parse remaining part: '${remaining}'`);
+      return null;
+    }
+  } else {
+    // No space - assume fixed positions: Kanban Code is 4 chars starting at position 13
+    if (remaining.length >= 5) {
+      kanbanCode = remaining.substring(0, 4).trim();
+      serialNumber = remaining.substring(4).trim();
+    } else {
+      console.warn(`Cannot parse Kanban Code and Serial from: '${remaining}'`);
+      return null;
+    }
+  }
+
+  // Validate we have all required parts
+  if (!partNumber || !kanbanCode || !serialNumber) {
+    console.warn(`Missing required components. Part: '${partNumber}', Kanban: '${kanbanCode}', Serial: '${serialNumber}'`);
+    return null;
+  }
+
+  console.log(`Parsed Internal Kanban: Part=${partNumber}, Kanban=${kanbanCode}, Serial=${serialNumber}`);
 
   return {
-    toyotaKanban,
-    internalKanban,
+    partNumber,
+    kanbanCode,
     serialNumber,
+    // Legacy aliases for backwards compatibility
+    toyotaKanban: partNumber,
+    internalKanban: kanbanCode,
   };
 };
 
@@ -593,6 +660,7 @@ export default function SkidBuildV2Page() {
       return () => clearTimeout(timer);
     }
   }, [success]);
+
 
   // Scanner instructions tooltip
   const [showScannerInstructions, setShowScannerInstructions] = useState(false);
@@ -959,9 +1027,40 @@ export default function SkidBuildV2Page() {
     const parsed = parseInternalKanban(scannedValue);
 
     if (!parsed) {
-      setError('Invalid Internal Kanban format. Expected: PART/KANBAN/SERIAL');
+      setError('Invalid Internal Kanban format. Expected: 12-char Part + Kanban Code + Serial (e.g., 627300820100 HM550004771)');
       return;
     }
+
+    // Issue #2: Frontend validation - Instant UX feedback before API call
+    // Validate Internal Kanban matches Toyota Kanban (from pendingToyotaKanban)
+    // Helper: Normalize part number by removing dashes for comparison
+    const normalizePartNumber = (part: string) => part?.replace(/-/g, '').trim() || '';
+
+    const toyotaPartNormalized = normalizePartNumber(pendingToyotaKanban.partNumber);
+    const internalPartNormalized = normalizePartNumber(parsed.partNumber);
+
+    if (toyotaPartNormalized !== internalPartNormalized) {
+      setError(`Part Number mismatch! Toyota Part: ${pendingToyotaKanban.partNumber}, Scanned Part: ${parsed.partNumber}`);
+      console.warn('Part mismatch:', { toyota: toyotaPartNormalized, internal: internalPartNormalized });
+      return;
+    }
+
+    // Validate Kanban Code matches (5 chars after Part Number)
+    const toyotaKanbanCode = pendingToyotaKanban.kanbanNumber?.trim() || '';
+    const internalKanbanCode = parsed.kanbanCode?.trim() || '';
+
+    if (toyotaKanbanCode && internalKanbanCode &&
+        toyotaKanbanCode.toLowerCase() !== internalKanbanCode.toLowerCase()) {
+      setError(`Kanban Code mismatch! Toyota Code: ${toyotaKanbanCode}, Scanned Code: ${internalKanbanCode}`);
+      console.warn('Kanban code mismatch:', { toyota: toyotaKanbanCode, internal: internalKanbanCode });
+      return;
+    }
+
+    console.log('✓ Internal Kanban validated against Toyota Kanban:', {
+      partMatch: `${toyotaPartNormalized} === ${internalPartNormalized}`,
+      kanbanMatch: `${toyotaKanbanCode} === ${internalKanbanCode}`,
+      serial: parsed.serialNumber
+    });
 
     // Get current skid to find palletizationCode
     const currentSkid = skidGroups.find(g => g.skidId === currentSkidId);
@@ -1025,7 +1124,7 @@ export default function SkidBuildV2Page() {
           boxNumber,                                     // Box number from count
           pendingToyotaKanban.lineSideAddress || 'N/A', // Line side address from Toyota Kanban
           palletizationCode,                             // For backend validation
-          parsed.internalKanban,
+          scannedValue,                                  // Full raw Internal Kanban string (e.g., "627300820100 HM550004771")
           user.id // User ID from authentication context (validated above)
         );
 
@@ -1053,7 +1152,7 @@ export default function SkidBuildV2Page() {
       id: scanId,
       skidId: currentSkidId,
       toyotaKanban: pendingToyotaKanban.rawValue,
-      internalKanban: parsed.internalKanban,
+      internalKanban: scannedValue,  // Store full raw string (e.g., "627300820100 HM550004771")
       serialNumber: parsed.serialNumber,
       partNumber: pendingToyotaKanban.partNumber,
       quantity: parseInt(pendingToyotaKanban.quantity) || 0,
@@ -1331,6 +1430,7 @@ export default function SkidBuildV2Page() {
    * Confirm Internal Kanban from popup modal
    * Author: Hassan, Date: 2025-12-13
    * Updated: 2025-12-13 - Show validation errors IN popup instead of closing it
+   * Updated: 2026-01-09 - Added Part/Kanban validation in popup (Issue #2)
    */
   const handleConfirmInternalKanban = () => {
     if (!internalKanbanInput.trim()) {
@@ -1340,12 +1440,38 @@ export default function SkidBuildV2Page() {
 
     const parsed = parseInternalKanban(internalKanbanInput);
     if (!parsed) {
-      setInternalKanbanError('Invalid internal kanban format. Expected: PART/KANBAN/SERIAL');
+      setInternalKanbanError('Invalid internal kanban format. Expected: 12-char Part + Kanban Code + Serial (e.g., 627300820100 HM550004771)');
       setInternalKanbanInput(''); // Clear for retry
       return;
     }
 
-    // Success - clear error, close popup, process scan
+    // Issue #2: Validate Internal Kanban matches Toyota Kanban (show error in popup)
+    if (pendingToyotaKanban) {
+      // Helper: Normalize part number by removing dashes for comparison
+      const normalizePartNumber = (part: string) => part?.replace(/-/g, '').trim() || '';
+
+      const toyotaPartNormalized = normalizePartNumber(pendingToyotaKanban.partNumber);
+      const internalPartNormalized = normalizePartNumber(parsed.partNumber);
+
+      if (toyotaPartNormalized !== internalPartNormalized) {
+        setInternalKanbanError(`Part Number mismatch! Toyota Part: ${pendingToyotaKanban.partNumber}, Scanned Part: ${parsed.partNumber}`);
+        setInternalKanbanInput(''); // Clear for retry
+        return;
+      }
+
+      // Validate Kanban Code matches (5 chars after Part Number)
+      const toyotaKanbanCode = pendingToyotaKanban.kanbanNumber?.trim() || '';
+      const internalKanbanCode = parsed.kanbanCode?.trim() || '';
+
+      if (toyotaKanbanCode && internalKanbanCode &&
+          toyotaKanbanCode.toLowerCase() !== internalKanbanCode.toLowerCase()) {
+        setInternalKanbanError(`Kanban Code mismatch! Toyota Code: ${toyotaKanbanCode}, Scanned Code: ${internalKanbanCode}`);
+        setInternalKanbanInput(''); // Clear for retry
+        return;
+      }
+    }
+
+    // All validations passed - clear error, close popup, process scan
     setInternalKanbanError(null);
     setShowInternalKanbanModal(false);
     handleInternalKanbanScan(internalKanbanInput.trim());
@@ -1371,31 +1497,11 @@ export default function SkidBuildV2Page() {
   // ===========================
 
   return (
-    <div className="fixed inset-0 flex flex-col overflow-auto">
+    <div className="relative min-h-screen">
       {/* Background - Fixed, doesn't scroll */}
       <VUTEQStaticBackground />
 
-      <div className="min-h-screen pb-20">
-        {/* Header */}
-        <div className="bg-[#253262] text-white p-4 shadow-md">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/home')}
-                className="hover:bg-white/10 p-2 rounded transition-colors"
-              >
-                <i className="fa fa-arrow-left text-xl"></i>
-              </button>
-              <h1 className="text-xl font-semibold">Skid Build V2 - Multi-Skid Scanner</h1>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="info" className="text-sm">
-                {skidGroups.length} Skids
-              </Badge>
-            </div>
-          </div>
-        </div>
-
+      <div className="relative pb-20">
         <div className="max-w-7xl mx-auto p-4 space-y-4">
           {/* Alerts */}
           {error && (
@@ -1442,10 +1548,10 @@ export default function SkidBuildV2Page() {
                         Conf# {toyotaConfirmationNumber}
                       </span>
                     )}
-                    {/* Current Skid Badge - moved from expanded section */}
-                    {currentSkidId && (
-                      <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-blue-100 text-blue-700">
-                        Skid: {currentSkidId}
+                    {/* Current Skid Badge - shows Order-Dock-Pallet-Skid for better UX */}
+                    {currentSkidId && currentOrderData && (
+                      <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-blue-100 text-blue-700 font-mono">
+                        {currentOrderData.orderNumber}-{currentOrderData.dockCode}-{currentSkidId}
                       </span>
                     )}
                   </div>
@@ -1518,54 +1624,72 @@ export default function SkidBuildV2Page() {
             </Card>
           )}
 
-          {/* Scanner */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-start gap-2">
-                <div className="flex-1">
-                  <Scanner
-                    onScan={handleScan}
-                    placeholder="Scan Manifest QR, Toyota Kanban"
-                    disabled={loading}
-                  />
-                </div>
-                <button
-                  onClick={() => setShowScannerInstructions(!showScannerInstructions)}
-                  className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex items-center justify-center mt-1"
-                  aria-label="Scanner instructions"
-                  title="Show scanner instructions"
-                >
-                  <i className="fa fa-info text-sm"></i>
-                </button>
-              </div>
-              {showScannerInstructions && (
-                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-gray-700 space-y-1.5">
-                  <div className="flex items-start gap-2">
-                    <i className="fa fa-circle text-[6px] text-blue-600 mt-1.5"></i>
-                    <span><strong>Manifest QR</strong> (44 chars) → Sets current skid</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <i className="fa fa-circle text-[6px] text-blue-600 mt-1.5"></i>
-                    <span><strong>Toyota Kanban</strong> (200+ chars) → Validates & opens popup for internal kanban</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <i className="fa fa-circle text-[6px] text-blue-600 mt-1.5"></i>
-                    <span><strong>Internal Kanban</strong> → Scanned in popup window (PART/KANBAN/SERIAL)</span>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Empty State */}
+          {/* INITIAL STATE - Nice card like Shipment Load */}
           {skidGroups.length === 0 && !loading && (
             <Card>
-              <CardContent className="p-8 text-center">
-                <i className="fa fa-box-open text-4xl text-gray-300 mb-4"></i>
-                <div className="text-gray-500 font-medium">No order loaded</div>
-                <div className="text-sm text-gray-400 mt-1">
-                  Scan a Manifest QR code to load the order and all planned skids
+              <CardContent className="p-6">
+                {/* Header with Icon */}
+                <div className="flex items-center gap-3 mb-4">
+                  <i className="fa-light fa-clipboard-list-check text-3xl text-[#253262]"></i>
+                  <div>
+                    <h2 className="text-xl font-bold text-[#253262]">Skid Build</h2>
+                    <p className="text-sm text-gray-500">Scan the Manifest QR code to begin</p>
+                  </div>
                 </div>
+
+                {/* Divider */}
+                <hr className="border-gray-200 mb-4" />
+
+                {/* Scanner Label */}
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Scan Manifest QR Code
+                </label>
+
+                {/* Scanner Input with Info Button */}
+                <div className="flex items-start gap-2">
+                  <div className="flex-1">
+                    <Scanner
+                      onScan={handleScan}
+                      placeholder="Scan Manifest QR Code"
+                      disabled={loading}
+                    />
+                  </div>
+                  <button
+                    onClick={() => setShowScannerInstructions(!showScannerInstructions)}
+                    className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex items-center justify-center mt-1"
+                    aria-label="Scanner instructions"
+                    title="Show scanner instructions"
+                  >
+                    <i className="fa fa-info text-sm"></i>
+                  </button>
+                </div>
+
+                {/* Scanner Instructions Tooltip */}
+                {showScannerInstructions && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-gray-700 space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <i className="fa fa-circle text-[6px] text-blue-600 mt-1.5"></i>
+                      <span><strong>Manifest QR</strong> (44 chars) → Sets current skid</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <i className="fa fa-circle text-[6px] text-blue-600 mt-1.5"></i>
+                      <span><strong>Toyota Kanban</strong> (200+ chars) → Validates & opens popup for internal kanban</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <i className="fa fa-circle text-[6px] text-blue-600 mt-1.5"></i>
+                      <span><strong>Internal Kanban</strong> → Scanned in popup window (12-char Part + Kanban Code + Serial)</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cancel Button */}
+                <button
+                  onClick={() => router.push('/')}
+                  className="w-full mt-4 py-3 bg-[#D2312E] text-white font-medium rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <i className="fa-light fa-xmark"></i>
+                  Cancel
+                </button>
               </CardContent>
             </Card>
           )}
@@ -1576,6 +1700,47 @@ export default function SkidBuildV2Page() {
               <CardContent className="p-8 text-center">
                 <i className="fa fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i>
                 <div className="text-gray-500 font-medium">Loading order...</div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* WORKING STATE - Scanner (only when order loaded) */}
+          {orderLoaded && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1">
+                    <Scanner
+                      onScan={handleScan}
+                      placeholder="Scan Manifest QR, Toyota Kanban"
+                      disabled={loading}
+                    />
+                  </div>
+                  <button
+                    onClick={() => setShowScannerInstructions(!showScannerInstructions)}
+                    className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex items-center justify-center mt-1"
+                    aria-label="Scanner instructions"
+                    title="Show scanner instructions"
+                  >
+                    <i className="fa fa-info text-sm"></i>
+                  </button>
+                </div>
+                {showScannerInstructions && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-gray-700 space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <i className="fa fa-circle text-[6px] text-blue-600 mt-1.5"></i>
+                      <span><strong>Manifest QR</strong> (44 chars) → Sets current skid</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <i className="fa fa-circle text-[6px] text-blue-600 mt-1.5"></i>
+                      <span><strong>Toyota Kanban</strong> (200+ chars) → Validates & opens popup for internal kanban</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <i className="fa fa-circle text-[6px] text-blue-600 mt-1.5"></i>
+                      <span><strong>Internal Kanban</strong> → Scanned in popup window (12-char Part + Kanban Code + Serial)</span>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -2039,24 +2204,19 @@ export default function SkidBuildV2Page() {
       {showInternalKanbanModal && pendingToyotaKanban && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={handleCancelInternalKanban}
+          // No onClick - modal cannot be closed by clicking outside
         >
           <div
             className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
-            onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
+            {/* Modal Header - No X button, must use Cancel or complete scan */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h3 className="text-lg font-bold text-[#253262]">
                 Scan Internal Kanban
               </h3>
-              <button
-                onClick={handleCancelInternalKanban}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-                aria-label="Close modal"
-              >
-                <i className="fa fa-xmark text-2xl"></i>
-              </button>
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                Required
+              </span>
             </div>
 
             {/* Modal Content */}
@@ -2099,7 +2259,7 @@ export default function SkidBuildV2Page() {
                       handleConfirmInternalKanban();
                     }
                   }}
-                  placeholder="Format: PART/KANBAN/SERIAL"
+                  placeholder="e.g., 627300820100 HM550004771"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#253262] focus:border-transparent font-mono"
                   autoFocus
                 />

@@ -50,6 +50,8 @@ export default function DockMonitorPage() {
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage] = useState(15); // Rows per page
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -168,24 +170,46 @@ export default function DockMonitorPage() {
   };
 
   /**
-   * Get status color class for table rows
+   * Get status color class for table rows (light background)
    */
-  const getStatusColorClass = (status: string): string => {
+  const getStatusRowClass = (status: string): string => {
     switch (status) {
       case 'COMPLETED':
-        return 'bg-green-500/30 border-l-4 border-green-500';
+        return 'bg-green-50';
       case 'ON_TIME':
-        return 'bg-blue-400/30 border-l-4 border-blue-400';
+        return 'bg-blue-50';
       case 'BEHIND':
-        return 'bg-orange-500/30 border-l-4 border-orange-500';
+        return 'bg-orange-50';
       case 'CRITICAL':
-        return 'bg-red-500/30 border-l-4 border-red-500';
+        return 'bg-red-50';
       case 'PROJECT_SHORT':
-        return 'bg-yellow-500/30 border-l-4 border-yellow-500';
+        return 'bg-yellow-50';
       case 'SHORT_SHIPPED':
-        return 'bg-purple-500/30 border-l-4 border-purple-500';
+        return 'bg-purple-50';
       default:
-        return 'bg-gray-100';
+        return 'bg-gray-50';
+    }
+  };
+
+  /**
+   * Get status bubble/badge color class (matches legend colors)
+   */
+  const getStatusBubbleClass = (status: string): string => {
+    switch (status) {
+      case 'COMPLETED':
+        return 'bg-green-500 text-white';
+      case 'ON_TIME':
+        return 'bg-blue-400 text-white';
+      case 'BEHIND':
+        return 'bg-orange-500 text-white';
+      case 'CRITICAL':
+        return 'bg-red-500 text-white';
+      case 'PROJECT_SHORT':
+        return 'bg-yellow-500 text-gray-900';
+      case 'SHORT_SHIPPED':
+        return 'bg-purple-500 text-white';
+      default:
+        return 'bg-gray-400 text-white';
     }
   };
 
@@ -195,19 +219,19 @@ export default function DockMonitorPage() {
   const getStatusText = (status: string): string => {
     switch (status) {
       case 'COMPLETED':
-        return 'COMPLETED';
+        return 'Completed';
       case 'ON_TIME':
-        return 'ON TIME';
+        return 'On Time';
       case 'BEHIND':
-        return 'BEHIND';
+        return 'Behind';
       case 'CRITICAL':
-        return 'CRITICAL';
+        return 'Critical';
       case 'PROJECT_SHORT':
-        return 'PROJECT SHORT SHIP';
+        return 'Project Short';
       case 'SHORT_SHIPPED':
-        return 'SHORT SHIPPED';
+        return 'Short Shipped';
       default:
-        return 'UNKNOWN';
+        return 'Unknown';
     }
   };
 
@@ -289,65 +313,73 @@ export default function DockMonitorPage() {
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 
+  // Pagination calculations
+  const totalPages = Math.ceil(sortedOrders.length / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const paginatedOrders = sortedOrders.slice(startIndex, endIndex);
+
+  // Reset to page 1 when data changes
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 flex flex-col">
+    <div className="relative">
       {/* Background - Fixed, doesn't scroll */}
       <VUTEQStaticBackground />
 
-      {/* Content - Scrolls on top of fixed background */}
-      <div className="relative flex-1 overflow-y-auto">
-        <div className="p-4 pt-24 max-w-[2000px] mx-auto space-y-2">
-          {/* Status Legend Card - Compact */}
-          <Card>
-            <div className="p-2">
-              <div className="flex flex-wrap items-center gap-3 text-xs">
-                <span className="font-bold text-gray-900 text-sm">STATUS:</span>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 bg-green-500 rounded shadow-sm"></div>
-                  <span className="font-medium text-gray-700">Completed</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 bg-blue-400 rounded shadow-sm"></div>
-                  <span className="font-medium text-gray-700">On Time</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 bg-orange-500 rounded shadow-sm"></div>
-                  <span className="font-medium text-gray-700">Behind</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 bg-red-500 rounded shadow-sm"></div>
-                  <span className="font-medium text-gray-700">Critical</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 bg-yellow-500 rounded shadow-sm"></div>
-                  <span className="font-medium text-gray-700">Project Short Ship</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 bg-purple-500 rounded shadow-sm"></div>
-                  <span className="font-medium text-gray-700">Short Shipped</span>
-                </div>
-              </div>
-            </div>
-          </Card>
+      {/* Content */}
+      <div className="relative px-2">
+        {/* Status Legend - Compact inline */}
+        <div className="flex flex-wrap items-center gap-2 text-xs pb-1 bg-white/80 rounded px-2 mb-1">
+          <span className="font-bold text-gray-900">STATUS:</span>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 bg-green-500 rounded"></div>
+            <span className="text-gray-700">Completed</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 bg-blue-400 rounded"></div>
+            <span className="text-gray-700">On Time</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 bg-orange-500 rounded"></div>
+            <span className="text-gray-700">Behind</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 bg-red-500 rounded"></div>
+            <span className="text-gray-700">Critical</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 bg-yellow-500 rounded"></div>
+            <span className="text-gray-700">Project Short</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 bg-purple-500 rounded"></div>
+            <span className="text-gray-700">Short Shipped</span>
+          </div>
+        </div>
 
-          {/* Error Alert */}
-          {error && (
-            <Alert variant="error" className="mb-2">
-              <div className="flex items-center justify-between">
-                <span>{error}</span>
-                <Button onClick={handleManualRefresh} variant="secondary" size="sm">
-                  Retry
-                </Button>
-              </div>
-            </Alert>
-          )}
-
-          {/* Orders Table */}
-          <Card>
-            <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-4 py-3 -m-[1px] rounded-t-xl">
-              <h2 className="text-lg font-bold text-white">ORDER STATUS ({orders.length} ORDERS)</h2>
+        {/* Error Alert */}
+        {error && (
+          <Alert variant="error" className="mb-1">
+            <div className="flex items-center justify-between">
+              <span>{error}</span>
+              <Button onClick={handleManualRefresh} variant="secondary" size="sm">
+                Retry
+              </Button>
             </div>
-          <div className="p-0">
+          </Alert>
+        )}
+
+        {/* Orders Table - Fits content */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-3 py-2">
+            <h2 className="text-base font-bold text-white">ORDER STATUS ({orders.length} ORDERS)</h2>
+          </div>
+          <div>
             {/* Loading State */}
             {loading && orders.length === 0 ? (
               <div className="flex justify-center items-center py-12">
@@ -368,7 +400,7 @@ export default function DockMonitorPage() {
                 {/* Table View */}
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10">
                   <tr className="bg-gray-700 text-white">
                     <th
                       className="px-3 py-2 text-center text-sm font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
@@ -445,37 +477,37 @@ export default function DockMonitorPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedOrders.map((order, index) => (
+                  {paginatedOrders.map((order, index) => (
                     <tr
                       key={index}
-                      className={`${getStatusColorClass(order.status)} transition-colors hover:opacity-90`}
+                      className={`${getStatusRowClass(order.status)} transition-colors hover:opacity-80`}
                     >
-                      <td className="px-3 py-2 text-sm font-mono font-bold text-gray-900 border border-gray-300 text-center">
+                      <td className="px-3 py-1.5 text-sm font-mono font-bold text-gray-900 border border-gray-300 text-center">
                         {getDisplayOrderNumber(order)}
                       </td>
-                      <td className="px-3 py-2 text-sm font-semibold text-gray-900 border border-gray-300 text-center">
+                      <td className="px-3 py-1.5 text-sm font-semibold text-gray-900 border border-gray-300 text-center">
                         {order.route}
                       </td>
-                      <td className="px-3 py-2 text-sm font-semibold text-gray-900 border border-gray-300 text-center">
+                      <td className="px-3 py-1.5 text-sm font-semibold text-gray-900 border border-gray-300 text-center">
                         {order.destination || order.dockCode || '-'}
                       </td>
-                      <td className="px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300">
+                      <td className="px-3 py-1.5 text-sm font-medium text-gray-900 border border-gray-300">
                         {order.supplierCode || '-'}
                       </td>
-                      <td className="px-3 py-2 text-sm font-mono font-semibold text-gray-900 border border-gray-300 text-center">
+                      <td className="px-3 py-1.5 text-sm font-mono text-gray-900 border border-gray-300 text-center">
                         {formatTime(order.plannedSkidBuild)}
                       </td>
-                      <td className="px-3 py-2 text-sm font-mono font-semibold text-gray-900 border border-gray-300 text-center">
+                      <td className="px-3 py-1.5 text-sm font-mono text-gray-900 border border-gray-300 text-center">
                         {formatTime(order.completedSkidBuild)}
                       </td>
-                      <td className="px-3 py-2 text-sm font-mono font-semibold text-gray-900 border border-gray-300 text-center">
+                      <td className="px-3 py-1.5 text-sm font-mono text-gray-900 border border-gray-300 text-center">
                         {formatTime(order.plannedShipmentLoad)}
                       </td>
-                      <td className="px-3 py-2 text-sm font-mono font-semibold text-gray-900 border border-gray-300 text-center">
+                      <td className="px-3 py-1.5 text-sm font-mono text-gray-900 border border-gray-300 text-center">
                         {formatTime(order.completedShipmentLoad)}
                       </td>
-                      <td className="px-3 py-2 text-sm border border-gray-300 text-center">
-                        <span className="font-bold text-gray-900">
+                      <td className="px-3 py-1.5 text-sm border border-gray-300 text-center">
+                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${getStatusBubbleClass(order.status)}`}>
                           {getStatusText(order.status)}
                         </span>
                       </td>
@@ -487,18 +519,34 @@ export default function DockMonitorPage() {
               </>
             )}
           </div>
-          </Card>
 
-          {/* Action Buttons */}
-          <div className="flex justify-end">
-            <Button
-              onClick={() => router.push('/')}
-              variant="primary"
-            >
-              <i className="fa-light fa-home mr-2"></i>
-              Return to Dashboard
-            </Button>
-          </div>
+          {/* Pagination Controls */}
+          {orders.length > 0 && (
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-100 border-t">
+              <div className="text-sm text-gray-600">
+                Showing {startIndex + 1}-{Math.min(endIndex, orders.length)} of {orders.length} orders
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 text-sm font-medium bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <i className="fa-light fa-chevron-left mr-1"></i> Prev
+                </button>
+                <span className="text-sm text-gray-700 font-medium">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 text-sm font-medium bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next <i className="fa-light fa-chevron-right ml-1"></i>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

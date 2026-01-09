@@ -52,12 +52,14 @@ builder.Services.AddDbContext<VuteqDbContext>(options =>
 // Add configuration for JWT
 builder.Services.Configure<JwtConfiguration>(builder.Configuration.GetSection("Jwt"));
 
-// Add controllers with JSON options for TimeOnly support
+// Add controllers with JSON options for TimeOnly and DateTime UTC support
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new TimeOnlyJsonConverter());
         options.JsonSerializerOptions.Converters.Add(new NullableTimeOnlyJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new DateTimeUtcJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new NullableDateTimeUtcJsonConverter());
     });
 
 // Add CORS policy for Next.js frontend
@@ -334,5 +336,59 @@ public class NullableTimeOnlyJsonConverter : JsonConverter<TimeOnly?>
             writer.WriteStringValue(value.Value.ToString("HH:mm:ss"));
         else
             writer.WriteNullValue();
+    }
+}
+
+/// <summary>
+/// JSON converter for DateTime type - ensures UTC dates are serialized with "Z" suffix
+/// Issue #1 Fix: JavaScript interprets dates without "Z" as local time instead of UTC
+/// </summary>
+public class DateTimeUtcJsonConverter : JsonConverter<DateTime>
+{
+    public override DateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var value = reader.GetString();
+        if (string.IsNullOrEmpty(value))
+            return default;
+
+        // Parse and ensure UTC
+        var parsed = DateTime.Parse(value, null, System.Globalization.DateTimeStyles.RoundtripKind);
+        return parsed.Kind == DateTimeKind.Utc ? parsed : parsed.ToUniversalTime();
+    }
+
+    public override void Write(Utf8JsonWriter writer, DateTime value, JsonSerializerOptions options)
+    {
+        // Always output with "Z" suffix for UTC dates
+        // Format: yyyy-MM-ddTHH:mm:ssZ or yyyy-MM-ddTHH:mm:ss.fffZ
+        var utcValue = value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime();
+        writer.WriteStringValue(utcValue.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"));
+    }
+}
+
+/// <summary>
+/// JSON converter for nullable DateTime type - ensures UTC dates are serialized with "Z" suffix or null
+/// </summary>
+public class NullableDateTimeUtcJsonConverter : JsonConverter<DateTime?>
+{
+    public override DateTime? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var value = reader.GetString();
+        if (string.IsNullOrEmpty(value)) return null;
+
+        var parsed = DateTime.Parse(value, null, System.Globalization.DateTimeStyles.RoundtripKind);
+        return parsed.Kind == DateTimeKind.Utc ? parsed : parsed.ToUniversalTime();
+    }
+
+    public override void Write(Utf8JsonWriter writer, DateTime? value, JsonSerializerOptions options)
+    {
+        if (value.HasValue)
+        {
+            var utcValue = value.Value.Kind == DateTimeKind.Utc ? value.Value : value.Value.ToUniversalTime();
+            writer.WriteStringValue(utcValue.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"));
+        }
+        else
+        {
+            writer.WriteNullValue();
+        }
     }
 }

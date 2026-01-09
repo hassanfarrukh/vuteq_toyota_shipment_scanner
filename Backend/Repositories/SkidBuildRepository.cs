@@ -48,6 +48,11 @@ public interface ISkidBuildRepository
     // Duplicate check operations
     Task<bool> IsInternalKanbanAlreadyScannedAsync(Guid orderId, string internalKanban);
     Task<bool> IsToyotaKanbanAlreadyScannedAsync(Guid orderId, Guid plannedItemId, int boxNumber);
+
+    /// <summary>
+    /// Issue #4: Check if a serial number was scanned within a time window (across ALL orders)
+    /// </summary>
+    Task<bool> IsSerialNumberScannedWithinWindowAsync(string serialNumber, int windowHours);
 }
 
 /// <summary>
@@ -543,6 +548,42 @@ public class SkidBuildRepository : ISkidBuildRepository
         {
             _logger.LogError(ex, "Error checking duplicate Toyota Kanban for order: {OrderId}, PlannedItemId: {PlannedItemId}, BoxNumber: {BoxNumber}",
                 orderId, plannedItemId, boxNumber);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Issue #4: Check if a serial number was scanned within a time window (across ALL orders)
+    /// Uses KanbanDuplicateWindowHours setting for time-based duplicate detection
+    /// </summary>
+    public async Task<bool> IsSerialNumberScannedWithinWindowAsync(string serialNumber, int windowHours)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(serialNumber))
+                return false;
+
+            var cutoffTime = DateTime.UtcNow.AddHours(-windowHours);
+
+            // Check if this serial number was scanned within the time window (across ALL orders)
+            var exists = await _context.SkidScans
+                .AnyAsync(s => !string.IsNullOrEmpty(s.InternalKanbanSerial) &&
+                              s.InternalKanbanSerial == serialNumber &&
+                              s.ScannedAt >= cutoffTime);
+
+            if (exists)
+            {
+                _logger.LogWarning(
+                    "Duplicate serial number found within {WindowHours}h window: {SerialNumber}",
+                    windowHours, serialNumber);
+            }
+
+            return exists;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking serial number duplicate: {SerialNumber}, WindowHours: {WindowHours}",
+                serialNumber, windowHours);
             throw;
         }
     }

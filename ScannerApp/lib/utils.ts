@@ -237,18 +237,20 @@ export function sleep(ms: number): Promise<void> {
 
 /**
  * Get current location from environment or default
+ * Updated: 2026-01-09 - Issue #5: Changed default from INDIANA to VOSC (Hassan)
  */
 export function getCurrentLocation(): string {
-  if (typeof window === 'undefined') return 'INDIANA';
-  return process.env.NEXT_PUBLIC_LOCATION || 'INDIANA';
+  if (typeof window === 'undefined') return 'VOSC';
+  return process.env.NEXT_PUBLIC_LOCATION || 'VOSC';
 }
 
 /**
  * Check if current location requires serial scanning (BR-004)
+ * Updated: 2026-01-09 - Issue #5: Changed from INDIANA to VOSC (Hassan)
  */
 export function requiresSerialScanning(): boolean {
   const location = getCurrentLocation();
-  return location === 'INDIANA';
+  return location === 'VOSC';
 }
 
 /**

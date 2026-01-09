@@ -55,12 +55,12 @@ export default function RootLayout({
         {/* Font Awesome Pro Local */}
         <link rel="stylesheet" href="/fontawesome/css/all.css" />
       </head>
-      <body className="min-h-screen flex flex-col">
+      <body className="min-h-screen">
         <AuthProvider>
           <LocationProvider>
             <PageProvider>
               <Header />
-              <main className="flex-1 container py-2 md:py-6 overflow-auto">
+              <main className="container mx-auto px-4 py-2 md:py-6">
                 {children}
               </main>
             </PageProvider>

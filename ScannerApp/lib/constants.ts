@@ -12,47 +12,48 @@
 import type { Location, DashboardTile } from '@/types';
 
 // ===== LOCATION CONFIGURATION =====
+// Updated: 2026-01-09 - Issue #5: Changed from state names to actual site names (Hassan)
 export const LOCATIONS: Location[] = [
   {
     id: 'loc-001',
-    name: 'INDIANA',
+    name: 'VOSC',
     requiresSerialScanning: true,
-    address: 'Indiana Facility',
+    address: 'VOSC Facility',
     timezone: 'America/Indiana/Indianapolis',
   },
   {
     id: 'loc-002',
-    name: 'MICHIGAN',
+    name: 'Vuteq KY',
     requiresSerialScanning: false,
-    address: 'Michigan Facility',
-    timezone: 'America/Detroit',
-  },
-  {
-    id: 'loc-003',
-    name: 'OHIO',
-    requiresSerialScanning: false,
-    address: 'Ohio Facility',
-    timezone: 'America/New_York',
-  },
-  {
-    id: 'loc-004',
-    name: 'KENTUCKY',
-    requiresSerialScanning: false,
-    address: 'Kentucky Facility',
+    address: 'Vuteq Kentucky Facility',
     timezone: 'America/Kentucky/Louisville',
   },
   {
-    id: 'loc-005',
-    name: 'TENNESSEE',
+    id: 'loc-003',
+    name: 'AL Off Site',
     requiresSerialScanning: false,
-    address: 'Tennessee Facility',
+    address: 'Alabama Off Site Facility',
+    timezone: 'America/Chicago',
+  },
+  {
+    id: 'loc-004',
+    name: 'DV-IN',
+    requiresSerialScanning: false,
+    address: 'Diversity Indiana Facility',
+    timezone: 'America/Indiana/Indianapolis',
+  },
+  {
+    id: 'loc-005',
+    name: 'DV-MS',
+    requiresSerialScanning: false,
+    address: 'Diversity Mississippi Facility',
     timezone: 'America/Chicago',
   },
   {
     id: 'loc-006',
-    name: 'ALABAMA',
+    name: 'Vutex',
     requiresSerialScanning: false,
-    address: 'Alabama Facility',
+    address: 'Vutex Facility',
     timezone: 'America/Chicago',
   },
 ];

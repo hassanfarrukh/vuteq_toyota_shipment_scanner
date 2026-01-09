@@ -129,12 +129,12 @@ export default function DownloadScannedDataPage() {
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col">
+    <div className="relative min-h-screen">
       {/* VUTEQ Static Background */}
       <VUTEQStaticBackground />
 
-      <div className="relative flex-1 overflow-y-auto">
-        <div className="p-8 pt-24 max-w-6xl mx-auto space-y-6">
+      <div className="relative">
+        <div className="p-8 max-w-6xl mx-auto space-y-6">
 
         {/* Success Alert */}
         {success && (

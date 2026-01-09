@@ -54,10 +54,17 @@ public class SkidScan : AuditableEntity
     public string? LineSideAddress { get; set; }
 
     /// <summary>
-    /// Internal kanban scanned (e.g., "56089-08E90-00/MPE/001")
+    /// Internal kanban scanned (e.g., "627300820100 HM550004771")
     /// </summary>
     [MaxLength(100)]
     public string? InternalKanban { get; set; }
+
+    /// <summary>
+    /// Parsed Serial Number from Internal Kanban (e.g., "0004771")
+    /// Issue #4: Used for time-window duplicate checking (KanbanDuplicateWindowHours)
+    /// </summary>
+    [MaxLength(20)]
+    public string? InternalKanbanSerial { get; set; }
 
     /// <summary>
     /// Palletization code for validation matching

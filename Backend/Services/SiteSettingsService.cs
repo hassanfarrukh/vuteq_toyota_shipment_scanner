@@ -88,15 +88,21 @@ public class SiteSettingsService : ISiteSettingsService
             }
 
             // Validate plant times if both are set
+            // Issue #3 Fix: Allow overnight shifts (e.g., 6:30 AM to 4:00 AM next day)
+            // Overnight shift = closing time < opening time (e.g., 04:00 < 06:30)
+            // This is VALID for overnight operations
+            // Only invalid case: opening == closing (zero-length shift)
             if (request.PlantOpeningTime.HasValue && request.PlantClosingTime.HasValue)
             {
-                if (request.PlantClosingTime <= request.PlantOpeningTime)
+                if (request.PlantClosingTime == request.PlantOpeningTime)
                 {
                     return ApiResponse<SiteSettingsDto>.ErrorResponse(
                         "Invalid plant hours",
-                        "Plant closing time must be after opening time"
+                        "Plant opening and closing times cannot be the same"
                     );
                 }
+                // Note: Closing < Opening is VALID (overnight shift pattern)
+                // Example: Opening 06:30, Closing 04:00 = 21.5 hour shift spanning midnight
             }
 
             var settings = new SiteSettings

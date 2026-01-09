@@ -905,13 +905,13 @@ export default function PreShipmentScanPage() {
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col">
+    <div className="relative min-h-screen">
       {/* Background - Fixed, doesn't scroll */}
       <VUTEQStaticBackground />
 
-      {/* Content - Scrolls on top of fixed background */}
-      <div className="relative flex-1 overflow-y-auto">
-        <div className="p-4 pt-24 max-w-3xl mx-auto space-y-3">
+      {/* Content */}
+      <div className="relative">
+        <div className="p-4 max-w-3xl mx-auto space-y-3">
           {/* Error Alert */}
           {error && (
             <Alert variant="error" onClose={() => setError(null)}>

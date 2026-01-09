@@ -1176,13 +1176,13 @@ export default function ShipmentLoadV2Page() {
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col">
+    <div className="relative min-h-screen">
       {/* Background - Fixed */}
       <VUTEQStaticBackground />
 
-      {/* Content - Scrollable */}
-      <div className="relative flex-1 overflow-y-auto">
-        <div className="p-3 pt-20 max-w-3xl mx-auto space-y-2 pb-20">
+      {/* Content */}
+      <div className="relative">
+        <div className="p-3 max-w-3xl mx-auto space-y-2 pb-20">
           {/* Progress Indicator - Hide on Success Screen */}
           {currentScreen !== 4 && (
             <Card>

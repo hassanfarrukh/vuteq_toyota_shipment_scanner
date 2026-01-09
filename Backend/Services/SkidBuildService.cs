@@ -30,6 +30,28 @@ public interface ISkidBuildService
 }
 
 /// <summary>
+/// Parsed Internal Kanban data structure
+/// Issue #2: Fixed-position format parsing for validation
+/// </summary>
+public class ParsedInternalKanban
+{
+    /// <summary>Part Number - Position 1-12 (12 chars)</summary>
+    public string PartNumber { get; set; } = string.Empty;
+
+    /// <summary>Kanban Code - Position 13-17 (5 chars, may be space-padded)</summary>
+    public string KanbanCode { get; set; } = string.Empty;
+
+    /// <summary>Serial Number - Position 18+ (variable length)</summary>
+    public string SerialNumber { get; set; } = string.Empty;
+
+    /// <summary>Whether the parsing was successful</summary>
+    public bool IsValid { get; set; }
+
+    /// <summary>Error message if parsing failed</summary>
+    public string? ErrorMessage { get; set; }
+}
+
+/// <summary>
 /// Service implementation for Skid Build operations
 /// </summary>
 public class SkidBuildService : ISkidBuildService
@@ -68,6 +90,116 @@ public class SkidBuildService : ISkidBuildService
             return parsedGuid;
         }
         return SystemUserId;
+    }
+
+    /// <summary>
+    /// Issue #2: Parse Internal Kanban using fixed-position format
+    /// Format: Position 1-12: Part Number (12 chars)
+    ///         Position 13-17: Kanban Code (5 chars, may contain space)
+    ///         Position 18+: Serial Number (variable)
+    /// Example: "627300820100 HM550004771" or "627300820100HM550004771"
+    /// </summary>
+    private ParsedInternalKanban ParseInternalKanban(string? internalKanban)
+    {
+        var result = new ParsedInternalKanban();
+
+        if (string.IsNullOrWhiteSpace(internalKanban))
+        {
+            result.IsValid = false;
+            result.ErrorMessage = "Internal Kanban is empty";
+            return result;
+        }
+
+        // Remove any leading/trailing whitespace
+        var kanban = internalKanban.Trim();
+
+        // Minimum length: 12 (part) + 4 (kanban code min) + 1 (serial min) = 17
+        if (kanban.Length < 17)
+        {
+            result.IsValid = false;
+            result.ErrorMessage = $"Internal Kanban too short (min 17 chars): '{kanban}'";
+            return result;
+        }
+
+        // Parse fixed positions
+        // Part Number: First 12 characters
+        result.PartNumber = kanban.Substring(0, 12);
+
+        // The remaining part contains Kanban Code + Serial
+        // Format could be "627300820100 HM550004771" (with space) or "627300820100HM550004771" (no space)
+        var remaining = kanban.Substring(12);
+
+        // If there's a space, split by it
+        if (remaining.Contains(' '))
+        {
+            var parts = remaining.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2)
+            {
+                // First part is Kanban Code, rest is Serial
+                result.KanbanCode = parts[0].Trim();
+                result.SerialNumber = parts[1].Trim();
+            }
+            else if (parts.Length == 1)
+            {
+                // Only one part after split - assume it's KanbanCode+Serial combined
+                // Kanban Code is typically 4-5 chars
+                var combined = parts[0];
+                if (combined.Length >= 5)
+                {
+                    result.KanbanCode = combined.Substring(0, 4).Trim();
+                    result.SerialNumber = combined.Substring(4).Trim();
+                }
+                else
+                {
+                    result.IsValid = false;
+                    result.ErrorMessage = $"Cannot parse Kanban Code and Serial from: '{combined}'";
+                    return result;
+                }
+            }
+        }
+        else
+        {
+            // No space - assume fixed positions: Kanban Code is 4-5 chars starting at position 13
+            // Typical format: 12 chars part + 4 chars kanban + variable serial
+            if (remaining.Length >= 5)
+            {
+                result.KanbanCode = remaining.Substring(0, 4).Trim();
+                result.SerialNumber = remaining.Substring(4).Trim();
+            }
+            else
+            {
+                result.IsValid = false;
+                result.ErrorMessage = $"Cannot parse Kanban Code and Serial from: '{remaining}'";
+                return result;
+            }
+        }
+
+        // Validate we have all required parts
+        if (string.IsNullOrWhiteSpace(result.PartNumber) ||
+            string.IsNullOrWhiteSpace(result.KanbanCode) ||
+            string.IsNullOrWhiteSpace(result.SerialNumber))
+        {
+            result.IsValid = false;
+            result.ErrorMessage = $"Missing required components. Part: '{result.PartNumber}', Kanban: '{result.KanbanCode}', Serial: '{result.SerialNumber}'";
+            return result;
+        }
+
+        result.IsValid = true;
+        _logger.LogDebug("Parsed Internal Kanban: Part={PartNumber}, Kanban={KanbanCode}, Serial={SerialNumber}",
+            result.PartNumber, result.KanbanCode, result.SerialNumber);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Issue #2: Normalize part number by removing dashes for comparison
+    /// "62730-08201-00" → "627300820100"
+    /// </summary>
+    private static string NormalizePartNumber(string? partNumber)
+    {
+        if (string.IsNullOrWhiteSpace(partNumber))
+            return string.Empty;
+        return partNumber.Replace("-", "").Trim();
     }
 
     /// <summary>
@@ -360,38 +492,95 @@ public class SkidBuildService : ISkidBuildService
                 }
             }
 
-            // DUPLICATE CHECK: Validate internal kanban duplicates (respecting AllowDuplicates setting)
-            if (!string.IsNullOrWhiteSpace(request.InternalKanban) && session.OrderId.HasValue)
+            // ===== ISSUE #2 & #4: INTERNAL KANBAN PARSING AND VALIDATION =====
+            ParsedInternalKanban? parsedKanban = null;
+
+            if (!string.IsNullOrWhiteSpace(request.InternalKanban))
             {
-                // Get site settings to check if duplicates are allowed
-                var siteSettings = await _siteSettingsRepository.GetAsync();
-                bool allowDuplicates = siteSettings?.KanbanAllowDuplicates ?? false;
+                // Issue #2: Parse Internal Kanban using fixed-position format
+                parsedKanban = ParseInternalKanban(request.InternalKanban);
 
-                if (!allowDuplicates)
+                if (!parsedKanban.IsValid)
                 {
-                    // Check if this internal kanban was already scanned for this order
-                    var isDuplicate = await _skidBuildRepository.IsInternalKanbanAlreadyScannedAsync(
-                        session.OrderId.Value,
-                        request.InternalKanban);
+                    _logger.LogWarning("Invalid Internal Kanban format: {Error}", parsedKanban.ErrorMessage);
+                    return ApiResponse<SkidBuildScanResponseDto>.ErrorResponse(
+                        "Invalid Internal Kanban Format",
+                        parsedKanban.ErrorMessage ?? "Failed to parse Internal Kanban");
+                }
 
-                    if (isDuplicate)
+                // Issue #2: Validate Part Number matches PlannedItem
+                // NormalizePartNumber removes dashes so both formats match:
+                //   - "62730-08201-00" → "627300820100"
+                //   - "627300820100"   → "627300820100" (unchanged)
+                if (plannedItem != null)
+                {
+                    var normalizedPlannedPart = NormalizePartNumber(plannedItem.PartNumber);
+                    var normalizedScannedPart = NormalizePartNumber(parsedKanban.PartNumber);
+
+                    if (!string.Equals(normalizedPlannedPart, normalizedScannedPart, StringComparison.OrdinalIgnoreCase))
                     {
                         _logger.LogWarning(
-                            "Duplicate internal kanban blocked: '{InternalKanban}' for Order: {OrderId}",
-                            request.InternalKanban,
-                            session.OrderId.Value);
+                            "Part Number mismatch: PlannedItem='{PlannedPart}' ({NormalizedPlanned}), InternalKanban='{ScannedPart}' ({NormalizedScanned})",
+                            plannedItem.PartNumber, normalizedPlannedPart,
+                            parsedKanban.PartNumber, normalizedScannedPart);
 
                         return ApiResponse<SkidBuildScanResponseDto>.ErrorResponse(
-                            "Duplicate Internal Kanban",
-                            $"Internal Kanban '{request.InternalKanban}' has already been scanned for this order");
+                            "Part Number Mismatch",
+                            $"Internal Kanban Part '{parsedKanban.PartNumber}' does not match Toyota Kanban Part '{plannedItem.PartNumber}'");
                     }
-                }
-                else
-                {
+
+                    // Issue #2: Validate Kanban Code matches PlannedItem
+                    if (!string.IsNullOrWhiteSpace(plannedItem.KanbanNumber))
+                    {
+                        if (!string.Equals(plannedItem.KanbanNumber.Trim(), parsedKanban.KanbanCode.Trim(), StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.LogWarning(
+                                "Kanban Code mismatch: PlannedItem='{PlannedKanban}', InternalKanban='{ScannedKanban}'",
+                                plannedItem.KanbanNumber, parsedKanban.KanbanCode);
+
+                            return ApiResponse<SkidBuildScanResponseDto>.ErrorResponse(
+                                "Kanban Code Mismatch",
+                                $"Internal Kanban Code '{parsedKanban.KanbanCode}' does not match Toyota Kanban Code '{plannedItem.KanbanNumber}'");
+                        }
+                    }
+
                     _logger.LogInformation(
-                        "Duplicate internal kanban allowed (setting enabled): '{InternalKanban}' for Order: {OrderId}",
-                        request.InternalKanban,
-                        session.OrderId.Value);
+                        "Internal Kanban validated: Part={PartNumber}, Kanban={KanbanCode}, Serial={SerialNumber}",
+                        parsedKanban.PartNumber, parsedKanban.KanbanCode, parsedKanban.SerialNumber);
+                }
+
+                // Issue #4: Time-based Serial Number duplicate check (uses KanbanDuplicateWindowHours)
+                if (session.OrderId.HasValue)
+                {
+                    var siteSettings = await _siteSettingsRepository.GetAsync();
+                    bool allowDuplicates = siteSettings?.KanbanAllowDuplicates ?? false;
+                    int windowHours = siteSettings?.KanbanDuplicateWindowHours ?? 24;
+
+                    if (!allowDuplicates)
+                    {
+                        // Issue #4: Check if Serial Number was scanned within time window (across ALL orders)
+                        var isSerialDuplicate = await _skidBuildRepository.IsSerialNumberScannedWithinWindowAsync(
+                            parsedKanban.SerialNumber,
+                            windowHours);
+
+                        if (isSerialDuplicate)
+                        {
+                            _logger.LogWarning(
+                                "Duplicate Serial Number blocked: '{SerialNumber}' scanned within last {WindowHours} hours",
+                                parsedKanban.SerialNumber,
+                                windowHours);
+
+                            return ApiResponse<SkidBuildScanResponseDto>.ErrorResponse(
+                                "Duplicate Serial Number",
+                                $"Serial '{parsedKanban.SerialNumber}' was already scanned within the last {windowHours} hours");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogInformation(
+                            "Duplicate kanban allowed (setting enabled): Serial='{SerialNumber}'",
+                            parsedKanban.SerialNumber);
+                    }
                 }
             }
 
@@ -431,6 +620,7 @@ public class SkidBuildService : ISkidBuildService
                 BoxNumber = request.BoxNumber,
                 LineSideAddress = request.LineSideAddress,
                 InternalKanban = request.InternalKanban,
+                InternalKanbanSerial = parsedKanban?.SerialNumber, // Issue #4: Store parsed serial for duplicate checking
                 PalletizationCode = request.PalletizationCode,
                 ScannedAt = DateTime.UtcNow,
                 ScannedBy = resolvedUserId,

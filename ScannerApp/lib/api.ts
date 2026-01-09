@@ -401,7 +401,7 @@ export async function getComplianceReport(): Promise<ApiResponse<ComplianceRepor
   await new Promise(resolve => setTimeout(resolve, 700));
 
   const mockReport: ComplianceReport = {
-    location: 'INDIANA',
+    location: 'VOSC',
     reportDate: new Date().toISOString(),
     metrics: [
       {

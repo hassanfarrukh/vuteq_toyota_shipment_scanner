@@ -815,13 +815,13 @@ export default function OrdersPage() {
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col">
+    <div className="relative min-h-screen">
       {/* VUTEQ Static Background */}
       <VUTEQStaticBackground />
 
-      {/* Content - Scrolls on top of fixed background */}
-      <div className="relative flex-1 overflow-y-auto">
-        <div className="p-8 pt-24 w-full space-y-6">
+      {/* Content */}
+      <div className="relative">
+        <div className="pt-1 px-8 pb-8 w-full space-y-6">
           {/* Success Alert */}
           {success && (
             <Alert variant="success" onClose={() => setSuccess(null)}>
@@ -1556,18 +1556,6 @@ export default function OrdersPage() {
             </CardContent>
           </Card>
 
-          {/* Back to Dashboard Button */}
-          <div className="flex justify-center sm:justify-end">
-            <Button
-              onClick={() => router.push('/')}
-              variant="primary"
-              size="lg"
-              className="w-full sm:w-auto"
-            >
-              <i className="fa-light fa-home mr-2" style={{ fontSize: '18px' }}></i>
-              Return to Dashboard
-            </Button>
-          </div>
         </div>
       </div>
 

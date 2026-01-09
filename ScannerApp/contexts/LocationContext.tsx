@@ -26,7 +26,7 @@ interface LocationContextType {
 const LocationContext = createContext<LocationContextType | undefined>(undefined);
 
 export function LocationProvider({ children }: { children: ReactNode }) {
-  const [location, setLocation] = useState<string>('INDIANA'); // Default fallback
+  const [location, setLocation] = useState<string>('VOSC'); // Default fallback - Issue #5 update
   const [enablePreShipmentScan, setEnablePreShipmentScan] = useState<boolean>(true); // Default true
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
