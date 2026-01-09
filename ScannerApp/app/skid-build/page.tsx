@@ -1630,7 +1630,7 @@ export default function SkidBuildV2Page() {
               <CardContent className="p-6">
                 {/* Header with Icon */}
                 <div className="flex items-center gap-3 mb-4">
-                  <i className="fa-light fa-clipboard-list-check text-3xl text-[#253262]"></i>
+                  <i className="fa fa-clipboard-list-check text-3xl text-[#253262]"></i>
                   <div>
                     <h2 className="text-xl font-bold text-[#253262]">Skid Build</h2>
                     <p className="text-sm text-gray-500">Scan the Manifest QR code to begin</p>
@@ -1650,7 +1650,7 @@ export default function SkidBuildV2Page() {
                   <div className="flex-1">
                     <Scanner
                       onScan={handleScan}
-                      placeholder="Scan Manifest QR Code"
+                      placeholder="Scan"
                       disabled={loading}
                     />
                   </div>
@@ -1708,11 +1708,15 @@ export default function SkidBuildV2Page() {
           {orderLoaded && (
             <Card>
               <CardContent className="p-4">
+                {/* Helper text */}
+                <p className="text-sm text-gray-600 mb-2">
+                  Scan Toyota Kanban <span className="text-gray-400">(or Manifest QR to switch skid)</span>
+                </p>
                 <div className="flex items-start gap-2">
                   <div className="flex-1">
                     <Scanner
                       onScan={handleScan}
-                      placeholder="Scan Manifest QR, Toyota Kanban"
+                      placeholder="Scan"
                       disabled={loading}
                     />
                   </div>
