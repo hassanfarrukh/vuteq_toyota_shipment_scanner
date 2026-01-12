@@ -17,7 +17,7 @@ namespace Backend.Services;
 public interface IOrderUploadService
 {
     Task<ApiResponse<OrderUploadResponseDto>> UploadAndProcessFileAsync(IFormFile file, Guid userId);
-    Task<ApiResponse<IEnumerable<OrderUploadResponseDto>>> GetUploadHistoryAsync();
+    Task<ApiResponse<IEnumerable<OrderUploadResponseDto>>> GetUploadHistoryAsync(DateTime? fromDate = null, DateTime? toDate = null);
     Task<ApiResponse<OrderUploadResponseDto>> GetUploadByIdAsync(Guid id);
     Task<ApiResponse<bool>> DeleteUploadAsync(Guid id);
 }
@@ -351,13 +351,32 @@ public class OrderUploadService : IOrderUploadService
     }
 
     /// <summary>
-    /// Get all upload history
+    /// Get all upload history with optional date range filter
     /// </summary>
-    public async Task<ApiResponse<IEnumerable<OrderUploadResponseDto>>> GetUploadHistoryAsync()
+    /// <param name="fromDate">Optional start date for filtering uploads (inclusive)</param>
+    /// <param name="toDate">Optional end date for filtering uploads (inclusive)</param>
+    public async Task<ApiResponse<IEnumerable<OrderUploadResponseDto>>> GetUploadHistoryAsync(
+        DateTime? fromDate = null,
+        DateTime? toDate = null)
     {
         try
         {
             var uploads = await _uploadRepository.GetAllUploadsAsync();
+
+            // Apply date range filter if provided
+            if (fromDate.HasValue)
+            {
+                uploads = uploads.Where(u => u.UploadDate >= fromDate.Value).ToList();
+                _logger.LogInformation("Filtering uploads from {FromDate}", fromDate.Value);
+            }
+
+            if (toDate.HasValue)
+            {
+                // Include the entire end date by adding one day and using less than comparison
+                var endDateTime = toDate.Value.Date.AddDays(1);
+                uploads = uploads.Where(u => u.UploadDate < endDateTime).ToList();
+                _logger.LogInformation("Filtering uploads to {ToDate}", toDate.Value);
+            }
 
             var uploadDtos = uploads.Select(u => new OrderUploadResponseDto
             {
@@ -375,13 +394,18 @@ public class OrderUploadService : IOrderUploadService
                 UploadedByUsername = u.UploadedByUser?.Username
             });
 
+            var message = fromDate.HasValue || toDate.HasValue
+                ? $"Upload history retrieved successfully ({uploads.Count()} records)"
+                : "Upload history retrieved successfully";
+
             return ApiResponse<IEnumerable<OrderUploadResponseDto>>.SuccessResponse(
                 uploadDtos,
-                "Upload history retrieved successfully");
+                message);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving upload history");
+            _logger.LogError(ex, "Error retrieving upload history. FromDate: {FromDate}, ToDate: {ToDate}",
+                fromDate, toDate);
             return ApiResponse<IEnumerable<OrderUploadResponseDto>>.ErrorResponse(
                 "Failed to retrieve upload history",
                 ex.Message);

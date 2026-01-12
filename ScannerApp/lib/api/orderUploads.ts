@@ -88,13 +88,24 @@ export async function uploadOrderFile(file: File): Promise<ApiResponse<OrderUplo
 
 /**
  * Get upload history
+ * @param fromDate Optional start date filter (YYYY-MM-DD format)
+ * @param toDate Optional end date filter (YYYY-MM-DD format)
  * @returns List of all upload records
  */
-export async function getUploadHistory(): Promise<ApiResponse<OrderUploadResponseDto[]>> {
+export async function getUploadHistory(
+  fromDate?: string,
+  toDate?: string
+): Promise<ApiResponse<OrderUploadResponseDto[]>> {
   try {
-    const response = await apiClient.get<ApiResponse<OrderUploadResponseDto[]>>(
-      '/api/v1/orders/uploads'
-    );
+    const params = new URLSearchParams();
+    if (fromDate) params.append('fromDate', fromDate);
+    if (toDate) params.append('toDate', toDate);
+
+    const url = params.toString()
+      ? `/api/v1/orders/uploads?${params.toString()}`
+      : '/api/v1/orders/uploads';
+
+    const response = await apiClient.get<ApiResponse<OrderUploadResponseDto[]>>(url);
     return response.data;
   } catch (error) {
     return {
@@ -163,14 +174,25 @@ export interface OrderDto {
 }
 
 /**
- * Get orders - all or filtered by uploadId
+ * Get orders - all or filtered by uploadId and/or date range
  * @param uploadId Optional upload ID to filter by
+ * @param fromDate Optional start date filter (YYYY-MM-DD format)
+ * @param toDate Optional end date filter (YYYY-MM-DD format)
  * @returns List of orders
  */
-export async function getOrders(uploadId?: string): Promise<ApiResponse<OrderDto[]>> {
+export async function getOrders(
+  uploadId?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<ApiResponse<OrderDto[]>> {
   try {
-    const url = uploadId
-      ? `/api/v1/orders?uploadId=${uploadId}`
+    const params = new URLSearchParams();
+    if (uploadId) params.append('uploadId', uploadId);
+    if (fromDate) params.append('fromDate', fromDate);
+    if (toDate) params.append('toDate', toDate);
+
+    const url = params.toString()
+      ? `/api/v1/orders?${params.toString()}`
       : '/api/v1/orders';
 
     const response = await apiClient.get<ApiResponse<OrderDto[]>>(url);
@@ -207,14 +229,25 @@ export interface PlannedItemDto {
 }
 
 /**
- * Get planned items - all or filtered by orderId
+ * Get planned items - all or filtered by orderId and/or date range
  * @param orderId Optional order ID to filter by
+ * @param fromDate Optional start date filter (YYYY-MM-DD format)
+ * @param toDate Optional end date filter (YYYY-MM-DD format)
  * @returns List of planned items
  */
-export async function getPlannedItems(orderId?: string): Promise<ApiResponse<PlannedItemDto[]>> {
+export async function getPlannedItems(
+  orderId?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<ApiResponse<PlannedItemDto[]>> {
   try {
-    const url = orderId
-      ? `/api/v1/orders/planned-items?orderId=${orderId}`
+    const params = new URLSearchParams();
+    if (orderId) params.append('orderId', orderId);
+    if (fromDate) params.append('fromDate', fromDate);
+    if (toDate) params.append('toDate', toDate);
+
+    const url = params.toString()
+      ? `/api/v1/orders/planned-items?${params.toString()}`
       : '/api/v1/orders/planned-items';
 
     const response = await apiClient.get<ApiResponse<PlannedItemDto[]>>(url);

@@ -12,12 +12,14 @@
 import apiClient, { getErrorMessage } from './client';
 
 // Site Settings interface - matches backend UpdateSiteSettingsRequest
+// NOTE: Backend uses camelCase for JSON properties (ASP.NET Core default)
 export interface SiteSettings {
   // Tab 1: Site Settings
   plantLocation: string;
   plantOpeningTime: string; // HH:mm format
   plantClosingTime: string; // HH:mm format
   enablePreShipmentScan: boolean;
+  orderArchiveDays: number; // Days before orders are moved to archive
 
   // Tab 2: Dock Monitor (with "dock" prefix to match backend)
   dockBehindThreshold: number; // minutes

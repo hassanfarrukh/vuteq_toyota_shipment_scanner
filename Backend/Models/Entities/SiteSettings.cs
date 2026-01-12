@@ -92,6 +92,15 @@ public class SiteSettings
 
     #endregion
 
+    #region Archive Settings
+
+    /// <summary>
+    /// Number of days before order uploads are archived (default: 14)
+    /// </summary>
+    public int OrderArchiveDays { get; set; } = 14;
+
+    #endregion
+
     #region Audit Fields
 
     /// <summary>

@@ -119,6 +119,7 @@ public class SiteSettingsService : ISiteSettingsService
                 KanbanAllowDuplicates = request.KanbanAllowDuplicates,
                 KanbanDuplicateWindowHours = request.KanbanDuplicateWindowHours,
                 KanbanAlertOnDuplicate = request.KanbanAlertOnDuplicate,
+                OrderArchiveDays = request.OrderArchiveDays,
                 UpdatedBy = userId
             };
 
@@ -163,6 +164,7 @@ public class SiteSettingsService : ISiteSettingsService
             KanbanAllowDuplicates = settings.KanbanAllowDuplicates,
             KanbanDuplicateWindowHours = settings.KanbanDuplicateWindowHours,
             KanbanAlertOnDuplicate = settings.KanbanAlertOnDuplicate,
+            OrderArchiveDays = settings.OrderArchiveDays,
             ModifiedAt = settings.UpdatedAt ?? settings.CreatedAt
         };
     }

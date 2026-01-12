@@ -89,6 +89,15 @@ public class SiteSettingsDto
 
     #endregion
 
+    #region Archive Settings
+
+    /// <summary>
+    /// Number of days before order uploads are archived (default: 14)
+    /// </summary>
+    public int OrderArchiveDays { get; set; }
+
+    #endregion
+
     /// <summary>
     /// Last modified timestamp
     /// </summary>
@@ -185,6 +194,17 @@ public class UpdateSiteSettingsRequest
     /// </summary>
     [Required(ErrorMessage = "KanbanAlertOnDuplicate is required")]
     public bool KanbanAlertOnDuplicate { get; set; }
+
+    #endregion
+
+    #region Archive Settings
+
+    /// <summary>
+    /// Number of days before order uploads are archived (default: 14)
+    /// </summary>
+    [Required(ErrorMessage = "OrderArchiveDays is required")]
+    [Range(1, 365, ErrorMessage = "OrderArchiveDays must be between 1 and 365 days")]
+    public int OrderArchiveDays { get; set; }
 
     #endregion
 }

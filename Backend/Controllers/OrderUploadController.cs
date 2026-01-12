@@ -136,10 +136,12 @@ public class OrderUploadController : ControllerBase
     /// </summary>
     /// <remarks>
     /// Retrieve all orders with their total parts count.
-    /// Optionally filter by upload ID to get orders from a specific upload.
+    /// Optionally filter by upload ID or date range (based on upload date).
     ///
     /// **Query Parameters:**
     /// - uploadId (optional): Filter orders by upload ID
+    /// - fromDate (optional): Start date for filtering by upload date (ISO 8601 format, e.g., 2026-01-01)
+    /// - toDate (optional): End date for filtering by upload date (ISO 8601 format, e.g., 2026-01-31, inclusive)
     ///
     /// **Sample Request (all orders):**
     /// ```
@@ -149,6 +151,11 @@ public class OrderUploadController : ControllerBase
     /// **Sample Request (filtered by upload):**
     /// ```
     /// GET /api/v1/orders?uploadId=550e8400-e29b-41d4-a716-446655440000
+    /// ```
+    ///
+    /// **Sample Request (filtered by date range):**
+    /// ```
+    /// GET /api/v1/orders?fromDate=2026-01-01&amp;toDate=2026-01-31
     /// ```
     ///
     /// **Sample Response:**
@@ -174,6 +181,8 @@ public class OrderUploadController : ControllerBase
     /// ```
     /// </remarks>
     /// <param name="uploadId">Optional upload ID to filter results</param>
+    /// <param name="fromDate">Optional start date for filtering by upload date (inclusive)</param>
+    /// <param name="toDate">Optional end date for filtering by upload date (inclusive)</param>
     /// <returns>List of orders with total parts count</returns>
     /// <response code="200">Orders retrieved successfully</response>
     /// <response code="401">Unauthorized - JWT token required</response>
@@ -182,11 +191,14 @@ public class OrderUploadController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<IEnumerable<OrderListDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetOrders([FromQuery] Guid? uploadId = null)
+    public async Task<IActionResult> GetOrders(
+        [FromQuery] Guid? uploadId = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null)
     {
         try
         {
-            var result = await _orderService.GetOrdersAsync(uploadId);
+            var result = await _orderService.GetOrdersAsync(uploadId, fromDate, toDate);
 
             if (result.Success)
             {
@@ -197,7 +209,8 @@ public class OrderUploadController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error retrieving orders. UploadId: {UploadId}", uploadId);
+            _logger.LogError(ex, "Unexpected error retrieving orders. UploadId: {UploadId}, FromDate: {FromDate}, ToDate: {ToDate}",
+                uploadId, fromDate, toDate);
             return StatusCode(500, ApiResponse<IEnumerable<OrderListDto>>.ErrorResponse(
                 "Internal server error",
                 "An unexpected error occurred while retrieving orders"));
@@ -205,29 +218,49 @@ public class OrderUploadController : ControllerBase
     }
 
     /// <summary>
-    /// Get upload history
+    /// Get upload history with optional date range filter
     /// </summary>
     /// <remarks>
     /// Retrieve all order file upload history, ordered by upload date (newest first).
+    /// Optionally filter by date range using fromDate and toDate query parameters.
+    ///
+    /// **Query Parameters:**
+    /// - fromDate (optional): Start date for filtering (ISO 8601 format, e.g., 2026-01-01)
+    /// - toDate (optional): End date for filtering (ISO 8601 format, e.g., 2026-01-31)
+    ///
+    /// **Sample Request (all uploads):**
+    /// ```
+    /// GET /api/v1/orders/uploads
+    /// ```
+    ///
+    /// **Sample Request (filtered by date range):**
+    /// ```
+    /// GET /api/v1/orders/uploads?fromDate=2026-01-01&amp;toDate=2026-01-31
+    /// ```
     ///
     /// **Sample Response:**
     /// ```json
     /// {
     ///   "success": true,
-    ///   "message": "Upload history retrieved successfully",
+    ///   "message": "Upload history retrieved successfully (15 records)",
     ///   "data": [
     ///     {
     ///       "uploadId": "550e8400-e29b-41d4-a716-446655440000",
-    ///       "fileName": "order_20251117.pdf",
+    ///       "fileName": "order_20251117.xlsx",
     ///       "fileSize": 2048576,
-    ///       "uploadDate": "2025-12-01T10:30:00Z",
-    ///       "status": "success"
+    ///       "uploadDate": "2026-01-12T10:30:00Z",
+    ///       "status": "success",
+    ///       "ordersCreated": 10,
+    ///       "totalItemsCreated": 150,
+    ///       "uploadedByUsername": "admin"
     ///     }
     ///   ]
     /// }
     /// ```
     /// </remarks>
-    /// <returns>List of all upload records</returns>
+    /// <param name="fromDate">Optional start date for filtering (inclusive)</param>
+    /// <param name="toDate">Optional end date for filtering (inclusive)</param>
+    /// <returns>List of all upload records matching the date range</returns>
     /// <response code="200">Upload history retrieved successfully</response>
     /// <response code="401">Unauthorized - JWT token required</response>
     /// <response code="500">Internal server error</response>
@@ -235,11 +268,13 @@ public class OrderUploadController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<IEnumerable<OrderUploadResponseDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetUploadHistory()
+    public async Task<IActionResult> GetUploadHistory(
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null)
     {
         try
         {
-            var result = await _orderUploadService.GetUploadHistoryAsync();
+            var result = await _orderUploadService.GetUploadHistoryAsync(fromDate, toDate);
 
             if (result.Success)
             {
@@ -250,7 +285,8 @@ public class OrderUploadController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error retrieving upload history");
+            _logger.LogError(ex, "Unexpected error retrieving upload history. FromDate: {FromDate}, ToDate: {ToDate}",
+                fromDate, toDate);
             return StatusCode(500, ApiResponse<IEnumerable<OrderUploadResponseDto>>.ErrorResponse(
                 "Internal server error",
                 "An unexpected error occurred while retrieving upload history"));
@@ -365,11 +401,13 @@ public class OrderUploadController : ControllerBase
     /// </summary>
     /// <remarks>
     /// Retrieve all planned items with their associated order information.
-    /// Optionally filter by upload ID or order ID to get items from a specific upload or order.
+    /// Optionally filter by upload ID, order ID, or date range (based on upload date).
     ///
     /// **Query Parameters:**
     /// - uploadId (optional): Filter planned items by upload ID
     /// - orderId (optional): Filter planned items by order ID (takes precedence over uploadId)
+    /// - fromDate (optional): Start date for filtering by upload date (ISO 8601 format, e.g., 2026-01-01)
+    /// - toDate (optional): End date for filtering by upload date (ISO 8601 format, e.g., 2026-01-31, inclusive)
     ///
     /// **Sample Request (all items):**
     /// ```
@@ -384,6 +422,11 @@ public class OrderUploadController : ControllerBase
     /// **Sample Request (filtered by order):**
     /// ```
     /// GET /api/v1/orders/planned-items?orderId=220e8400-e29b-41d4-a716-446655440222
+    /// ```
+    ///
+    /// **Sample Request (filtered by date range):**
+    /// ```
+    /// GET /api/v1/orders/planned-items?fromDate=2026-01-01&amp;toDate=2026-01-31
     /// ```
     ///
     /// **Sample Response:**
@@ -411,6 +454,8 @@ public class OrderUploadController : ControllerBase
     /// </remarks>
     /// <param name="uploadId">Optional upload ID to filter results</param>
     /// <param name="orderId">Optional order ID to filter results (takes precedence over uploadId)</param>
+    /// <param name="fromDate">Optional start date for filtering by upload date (inclusive)</param>
+    /// <param name="toDate">Optional end date for filtering by upload date (inclusive)</param>
     /// <returns>List of planned items with order information</returns>
     /// <response code="200">Planned items retrieved successfully</response>
     /// <response code="401">Unauthorized - JWT token required</response>
@@ -419,11 +464,15 @@ public class OrderUploadController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<IEnumerable<PlannedItemWithOrderDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetPlannedItems([FromQuery] Guid? uploadId = null, [FromQuery] Guid? orderId = null)
+    public async Task<IActionResult> GetPlannedItems(
+        [FromQuery] Guid? uploadId = null,
+        [FromQuery] Guid? orderId = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null)
     {
         try
         {
-            var result = await _plannedItemService.GetPlannedItemsAsync(uploadId, orderId);
+            var result = await _plannedItemService.GetPlannedItemsAsync(uploadId, orderId, fromDate, toDate);
 
             if (result.Success)
             {
@@ -434,7 +483,8 @@ public class OrderUploadController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error retrieving planned items. UploadId: {UploadId}, OrderId: {OrderId}", uploadId, orderId);
+            _logger.LogError(ex, "Unexpected error retrieving planned items. UploadId: {UploadId}, OrderId: {OrderId}, FromDate: {FromDate}, ToDate: {ToDate}",
+                uploadId, orderId, fromDate, toDate);
             return StatusCode(500, ApiResponse<IEnumerable<PlannedItemWithOrderDto>>.ErrorResponse(
                 "Internal server error",
                 "An unexpected error occurred while retrieving planned items"));

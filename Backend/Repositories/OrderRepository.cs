@@ -21,9 +21,11 @@ public interface IOrderRepository
     Task<bool> OrderExistsByOrderNumberAndDockAsync(string realOrderNumber, string dockCode);
     Task<IEnumerable<Order>> GetAllOrdersAsync();
     Task<IEnumerable<Order>> GetOrdersByUploadIdAsync(Guid uploadId);
+    Task<IEnumerable<Order>> GetOrdersByDateRangeAsync(DateTime? fromDate, DateTime? toDate);
     Task<Order?> GetOrderByIdAsync(Guid orderId);
     Task<IEnumerable<PlannedItem>> GetAllPlannedItemsWithOrdersAsync();
     Task<IEnumerable<PlannedItem>> GetPlannedItemsByUploadIdAsync(Guid uploadId);
+    Task<IEnumerable<PlannedItem>> GetPlannedItemsByDateRangeAsync(DateTime? fromDate, DateTime? toDate);
     Task<IEnumerable<PlannedItem>> GetPlannedItemsByOrderIdAsync(Guid orderId);
     Task<Order?> GetOrderWithSkidScansAsync(string orderNumber, string dockCode);
 }
@@ -195,6 +197,47 @@ public class OrderRepository : IOrderRepository
     }
 
     /// <summary>
+    /// Get orders filtered by date range based on OrderUpload.UploadDate
+    /// </summary>
+    public async Task<IEnumerable<Order>> GetOrdersByDateRangeAsync(DateTime? fromDate, DateTime? toDate)
+    {
+        try
+        {
+            var query = _context.Orders
+                .Include(o => o.PlannedItems)
+                .Join(_context.OrderUploads,
+                    order => order.UploadId,
+                    upload => upload.Id,
+                    (order, upload) => new { Order = order, Upload = upload });
+
+            // Apply date filters
+            if (fromDate.HasValue)
+            {
+                query = query.Where(x => x.Upload.UploadDate >= fromDate.Value);
+            }
+
+            if (toDate.HasValue)
+            {
+                // Include entire end date by adding 1 day and using <
+                var endDate = toDate.Value.AddDays(1);
+                query = query.Where(x => x.Upload.UploadDate < endDate);
+            }
+
+            return await query
+                .Select(x => x.Order)
+                .OrderByDescending(o => o.TransmitDate)
+                .AsNoTracking()
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving orders by date range. FromDate: {FromDate}, ToDate: {ToDate}",
+                fromDate, toDate);
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Get order by ID
     /// </summary>
     public async Task<Order?> GetOrderByIdAsync(Guid orderId)
@@ -251,6 +294,52 @@ public class OrderRepository : IOrderRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving planned items by upload ID: {UploadId}", uploadId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get planned items filtered by date range based on OrderUpload.UploadDate
+    /// </summary>
+    public async Task<IEnumerable<PlannedItem>> GetPlannedItemsByDateRangeAsync(DateTime? fromDate, DateTime? toDate)
+    {
+        try
+        {
+            var query = _context.PlannedItems
+                .Include(pi => pi.Order)
+                .Include(pi => pi.SkidScans)
+                .Join(_context.Orders,
+                    plannedItem => plannedItem.OrderId,
+                    order => order.OrderId,
+                    (plannedItem, order) => new { PlannedItem = plannedItem, Order = order })
+                .Join(_context.OrderUploads,
+                    x => x.Order.UploadId,
+                    upload => upload.Id,
+                    (x, upload) => new { x.PlannedItem, x.Order, Upload = upload });
+
+            // Apply date filters
+            if (fromDate.HasValue)
+            {
+                query = query.Where(x => x.Upload.UploadDate >= fromDate.Value);
+            }
+
+            if (toDate.HasValue)
+            {
+                // Include entire end date by adding 1 day and using <
+                var endDate = toDate.Value.AddDays(1);
+                query = query.Where(x => x.Upload.UploadDate < endDate);
+            }
+
+            return await query
+                .Select(x => x.PlannedItem)
+                .OrderByDescending(pi => pi.CreatedAt)
+                .AsNoTracking()
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving planned items by date range. FromDate: {FromDate}, ToDate: {ToDate}",
+                fromDate, toDate);
             throw;
         }
     }

@@ -249,6 +249,7 @@ export default function AdministrationPage() {
     plantOpeningTime: '07:00',
     plantClosingTime: '17:00',
     enablePreShipmentScan: false,
+    orderArchiveDays: 14,
     dockBehindThreshold: 15,
     dockCriticalThreshold: 30,
     dockDisplayMode: 'FULL',
@@ -1667,6 +1668,28 @@ export default function AdministrationPage() {
                               <label htmlFor="enablePreShipmentScan" className="text-sm font-medium text-gray-700">
                                 Enable PreShipment Scan
                               </label>
+                            </div>
+
+                            {/* Order Archive Days */}
+                            <div>
+                              <label htmlFor="orderArchiveDays" className="block text-sm font-medium text-gray-700 mb-1">
+                                Order Archive Days
+                                <span className="ml-1 inline-block relative group">
+                                  <i className="fa-solid fa-circle-info text-blue-600 hover:text-blue-800 cursor-help"></i>
+                                  <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                    Days before order uploads are moved to archive (1-365)
+                                  </span>
+                                </span>
+                              </label>
+                              <Input
+                                type="number"
+                                id="orderArchiveDays"
+                                value={siteSettings.orderArchiveDays}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, orderArchiveDays: parseInt(e.target.value) || 14 })}
+                                min={1}
+                                max={365}
+                                className="w-full"
+                              />
                             </div>
                           </div>
 

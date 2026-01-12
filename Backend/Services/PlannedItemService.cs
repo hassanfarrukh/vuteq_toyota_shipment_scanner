@@ -13,7 +13,7 @@ namespace Backend.Services;
 /// </summary>
 public interface IPlannedItemService
 {
-    Task<ApiResponse<IEnumerable<PlannedItemWithOrderDto>>> GetPlannedItemsAsync(Guid? uploadId = null, Guid? orderId = null);
+    Task<ApiResponse<IEnumerable<PlannedItemWithOrderDto>>> GetPlannedItemsAsync(Guid? uploadId = null, Guid? orderId = null, DateTime? fromDate = null, DateTime? toDate = null);
 }
 
 /// <summary>
@@ -33,18 +33,20 @@ public class PlannedItemService : IPlannedItemService
     }
 
     /// <summary>
-    /// Get planned items with order information, optionally filtered by upload ID or order ID
+    /// Get planned items with order information, optionally filtered by upload ID, order ID, or date range
     /// </summary>
-    public async Task<ApiResponse<IEnumerable<PlannedItemWithOrderDto>>> GetPlannedItemsAsync(Guid? uploadId = null, Guid? orderId = null)
+    public async Task<ApiResponse<IEnumerable<PlannedItemWithOrderDto>>> GetPlannedItemsAsync(Guid? uploadId = null, Guid? orderId = null, DateTime? fromDate = null, DateTime? toDate = null)
     {
         try
         {
-            // Get planned items based on filter (orderId takes precedence over uploadId)
+            // Get planned items based on filter (orderId takes precedence over uploadId, which takes precedence over date range)
             var plannedItems = orderId.HasValue
                 ? await _orderRepository.GetPlannedItemsByOrderIdAsync(orderId.Value)
                 : uploadId.HasValue
                     ? await _orderRepository.GetPlannedItemsByUploadIdAsync(uploadId.Value)
-                    : await _orderRepository.GetAllPlannedItemsWithOrdersAsync();
+                    : fromDate.HasValue || toDate.HasValue
+                        ? await _orderRepository.GetPlannedItemsByDateRangeAsync(fromDate, toDate)
+                        : await _orderRepository.GetAllPlannedItemsWithOrdersAsync();
 
             // Map to DTOs
             var plannedItemDtos = plannedItems.Select(pi => new PlannedItemWithOrderDto
@@ -76,7 +78,9 @@ public class PlannedItemService : IPlannedItemService
                 ? $"Retrieved {plannedItemDtos.Count} planned item(s) for order {orderId.Value}"
                 : uploadId.HasValue
                     ? $"Retrieved {plannedItemDtos.Count} planned item(s) for upload {uploadId.Value}"
-                    : $"Retrieved {plannedItemDtos.Count} planned item(s)";
+                    : fromDate.HasValue || toDate.HasValue
+                        ? $"Retrieved {plannedItemDtos.Count} planned item(s) for date range"
+                        : $"Retrieved {plannedItemDtos.Count} planned item(s)";
 
             _logger.LogInformation(message);
 
@@ -86,7 +90,8 @@ public class PlannedItemService : IPlannedItemService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving planned items. UploadId: {UploadId}, OrderId: {OrderId}", uploadId, orderId);
+            _logger.LogError(ex, "Error retrieving planned items. UploadId: {UploadId}, OrderId: {OrderId}, FromDate: {FromDate}, ToDate: {ToDate}",
+                uploadId, orderId, fromDate, toDate);
             return ApiResponse<IEnumerable<PlannedItemWithOrderDto>>.ErrorResponse(
                 "Failed to retrieve planned items",
                 ex.Message);

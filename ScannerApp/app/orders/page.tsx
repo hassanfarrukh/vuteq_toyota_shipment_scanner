@@ -60,6 +60,7 @@ import VUTEQStaticBackground from '@/components/layout/VUTEQStaticBackground';
 import SlideOutPanel from '@/components/ui/SlideOutPanel';
 import * as orderUploadsApi from '@/lib/api/orderUploads';
 import type { OrderUploadResponseDto } from '@/lib/api/orderUploads';
+import { getSiteSettings } from '@/lib/api/siteSettings';
 
 // Type definitions
 interface UploadedFile {
@@ -151,6 +152,10 @@ export default function OrdersPage() {
   const [showSkippedDetails, setShowSkippedDetails] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Archive view state
+  const [isArchivedView, setIsArchivedView] = useState(false);
+  const [orderArchiveDays, setOrderArchiveDays] = useState(14);
+
   // Pagination state for each tab
   const [filesPage, setFilesPage] = useState(1);
   const [filesPerPage, setFilesPerPage] = useState(10);
@@ -167,17 +172,66 @@ export default function OrdersPage() {
   const [partsSortColumn, setPartsSortColumn] = useState<PartsSortColumn | null>(null);
   const [partsSortDirection, setPartsSortDirection] = useState<SortDirection>('asc');
 
-  // Load data on mount - upload history and orders (since Planned Orders is default tab)
+  // Load site settings and data on mount
   useEffect(() => {
-    loadUploadHistory();
+    loadSiteSettings();
     loadOrders();
   }, []);
 
-  // Fetch upload history from API
+  // Load upload history when archived view changes
+  useEffect(() => {
+    console.log('[Archive Tab Change] isArchivedView changed to:', isArchivedView);
+    loadUploadHistory();
+    // Reload orders and planned items when archive view changes
+    // Clear any filters first
+    setFilteredUploadId(null);
+    setFilteredOrderId(null);
+    setFilteredOrderNumber(null);
+    loadOrders();
+    loadPlannedItems();
+  }, [isArchivedView, orderArchiveDays]);
+
+  // Fetch site settings to get orderArchiveDays
+  const loadSiteSettings = async () => {
+    try {
+      const response = await getSiteSettings();
+      if (response.success && response.data) {
+        setOrderArchiveDays(response.data.orderArchiveDays || 14);
+      }
+    } catch (e) {
+      console.error('Error loading site settings:', e);
+      // Use default value of 14 days if settings fail to load
+      setOrderArchiveDays(14);
+    }
+  };
+
+  // Fetch upload history from API with date filtering
   const loadUploadHistory = async () => {
     setIsLoading(true);
     try {
-      const response = await orderUploadsApi.getUploadHistory();
+      // Calculate date filters based on archive view
+      const today = new Date();
+      const archiveCutoffDate = new Date();
+      archiveCutoffDate.setDate(today.getDate() - orderArchiveDays);
+
+      const formatDate = (date: Date): string => {
+        return date.toISOString().split('T')[0]; // YYYY-MM-DD format
+      };
+
+      let fromDate: string | undefined;
+      let toDate: string | undefined;
+
+      if (isArchivedView) {
+        // Archived: show uploads older than X days (toDate = cutoff date)
+        toDate = formatDate(archiveCutoffDate);
+        console.log('[API Call] Loading ARCHIVED uploads (toDate):', toDate);
+      } else {
+        // Current: show uploads from last X days (fromDate = cutoff date)
+        fromDate = formatDate(archiveCutoffDate);
+        console.log('[API Call] Loading CURRENT uploads (fromDate):', fromDate);
+      }
+
+      const response = await orderUploadsApi.getUploadHistory(fromDate, toDate);
       if (response.success && response.data) {
         const files: UploadedFile[] = response.data.map((upload: OrderUploadResponseDto) => ({
           id: upload.uploadId,
@@ -192,6 +246,7 @@ export default function OrdersPage() {
           ordersSkipped: upload.ordersSkipped,
           skippedOrderNumbers: upload.skippedOrderNumbers,
         }));
+        console.log('[API Response] Loaded', files.length, 'upload files');
         setUploadedFiles(files);
       }
     } catch (e) {
@@ -204,8 +259,31 @@ export default function OrdersPage() {
   // Fetch orders from API
   const loadOrders = async (uploadId?: string) => {
     setIsLoadingOrders(true);
+    console.log('[API Call] Loading orders with uploadId:', uploadId || 'ALL');
     try {
-      const response = await orderUploadsApi.getOrders(uploadId);
+      // Calculate date filters based on archive view
+      const today = new Date();
+      const archiveCutoffDate = new Date();
+      archiveCutoffDate.setDate(today.getDate() - orderArchiveDays);
+
+      const formatDate = (date: Date): string => {
+        return date.toISOString().split('T')[0]; // YYYY-MM-DD format
+      };
+
+      let fromDate: string | undefined;
+      let toDate: string | undefined;
+
+      if (isArchivedView) {
+        // Archived: show orders from uploads older than X days (toDate = cutoff date)
+        toDate = formatDate(archiveCutoffDate);
+        console.log('[API Call] Loading ARCHIVED orders (toDate):', toDate);
+      } else {
+        // Current: show orders from uploads within last X days (fromDate = cutoff date)
+        fromDate = formatDate(archiveCutoffDate);
+        console.log('[API Call] Loading CURRENT orders (fromDate):', fromDate);
+      }
+
+      const response = await orderUploadsApi.getOrders(uploadId, fromDate, toDate);
       if (response.success && response.data) {
         const fetchedOrders: Order[] = response.data.map((order: orderUploadsApi.OrderDto) => ({
           id: order.orderId,
@@ -220,6 +298,7 @@ export default function OrdersPage() {
           plannedRoute: order.plannedRoute,
           mainRoute: order.mainRoute,
         }));
+        console.log('[API Response] Loaded', fetchedOrders.length, 'orders');
         setOrders(fetchedOrders);
       }
     } catch (e) {
@@ -232,8 +311,31 @@ export default function OrdersPage() {
   // Fetch planned items from API
   const loadPlannedItems = async (orderId?: string) => {
     setIsLoadingPlanned(true);
+    console.log('[API Call] Loading planned items with orderId:', orderId || 'ALL');
     try {
-      const response = await orderUploadsApi.getPlannedItems(orderId);
+      // Calculate date filters based on archive view
+      const today = new Date();
+      const archiveCutoffDate = new Date();
+      archiveCutoffDate.setDate(today.getDate() - orderArchiveDays);
+
+      const formatDate = (date: Date): string => {
+        return date.toISOString().split('T')[0]; // YYYY-MM-DD format
+      };
+
+      let fromDate: string | undefined;
+      let toDate: string | undefined;
+
+      if (isArchivedView) {
+        // Archived: show planned items from uploads older than X days (toDate = cutoff date)
+        toDate = formatDate(archiveCutoffDate);
+        console.log('[API Call] Loading ARCHIVED planned items (toDate):', toDate);
+      } else {
+        // Current: show planned items from uploads within last X days (fromDate = cutoff date)
+        fromDate = formatDate(archiveCutoffDate);
+        console.log('[API Call] Loading CURRENT planned items (fromDate):', fromDate);
+      }
+
+      const response = await orderUploadsApi.getPlannedItems(orderId, fromDate, toDate);
       if (response.success && response.data) {
         const items: PlannedItem[] = response.data.map((item: orderUploadsApi.PlannedItemDto) => ({
           id: item.id,
@@ -253,6 +355,7 @@ export default function OrdersPage() {
           orderId: item.orderId,
           uploadFileName: item.uploadFileName,
         }));
+        console.log('[API Response] Loaded', items.length, 'planned items');
         setPlannedItems(items);
       }
     } catch (e) {
@@ -638,12 +741,12 @@ export default function OrdersPage() {
   const sortedOrders = sortData(filteredOrders, ordersSortColumn, ordersSortDirection);
   const sortedPlannedItems = sortData(filteredPlannedItems, partsSortColumn, partsSortDirection);
 
-  // Reset to page 1 when search query changes
+  // Reset to page 1 when search query or archived view changes
   useEffect(() => {
     setFilesPage(1);
     setOrdersPage(1);
     setPartsPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, isArchivedView]);
 
   // Redirect if not supervisor or admin (after all hooks)
   if (user && user.role !== 'SUPERVISOR' && user.role !== 'ADMIN') {
@@ -863,6 +966,32 @@ export default function OrdersPage() {
                   <i className="fa-light fa-upload mr-2"></i>
                   Upload New File
                 </Button>
+              </div>
+
+              {/* Current/Archived Toggle Tabs */}
+              <div className="flex items-center gap-2 px-6 pb-4">
+                <button
+                  onClick={() => setIsArchivedView(false)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    !isArchivedView
+                      ? 'bg-[#253262] text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <i className="fa fa-clock mr-2"></i>
+                  Current (Last {orderArchiveDays} Days)
+                </button>
+                <button
+                  onClick={() => setIsArchivedView(true)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    isArchivedView
+                      ? 'bg-[#253262] text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <i className="fa fa-archive mr-2"></i>
+                  Archived (Older than {orderArchiveDays} Days)
+                </button>
               </div>
 
               {/* Tab Navigation + Search Bar */}

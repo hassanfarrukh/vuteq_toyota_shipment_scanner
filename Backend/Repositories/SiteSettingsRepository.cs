@@ -60,6 +60,7 @@ public class SiteSettingsRepository : ISiteSettingsRepository
                     KanbanAllowDuplicates = false,
                     KanbanDuplicateWindowHours = 24,
                     KanbanAlertOnDuplicate = true,
+                    OrderArchiveDays = 14,
                     CreatedAt = DateTime.Now
                 };
 
@@ -109,6 +110,7 @@ public class SiteSettingsRepository : ISiteSettingsRepository
                 existing.KanbanAllowDuplicates = settings.KanbanAllowDuplicates;
                 existing.KanbanDuplicateWindowHours = settings.KanbanDuplicateWindowHours;
                 existing.KanbanAlertOnDuplicate = settings.KanbanAlertOnDuplicate;
+                existing.OrderArchiveDays = settings.OrderArchiveDays;
                 existing.UpdatedAt = DateTime.Now;
                 existing.UpdatedBy = settings.UpdatedBy;
                 _context.SiteSettings.Update(existing);

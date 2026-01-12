@@ -13,7 +13,7 @@ namespace Backend.Services;
 /// </summary>
 public interface IOrderService
 {
-    Task<ApiResponse<IEnumerable<OrderListDto>>> GetOrdersAsync(Guid? uploadId = null);
+    Task<ApiResponse<IEnumerable<OrderListDto>>> GetOrdersAsync(Guid? uploadId = null, DateTime? fromDate = null, DateTime? toDate = null);
     Task<ApiResponse<OrderSkidsResponseDto>> GetOrderSkidsAsync(string orderNumber, string dockCode);
 }
 
@@ -34,16 +34,18 @@ public class OrderService : IOrderService
     }
 
     /// <summary>
-    /// Get orders with TotalParts count, optionally filtered by upload ID
+    /// Get orders with TotalParts count, optionally filtered by upload ID and/or date range
     /// </summary>
-    public async Task<ApiResponse<IEnumerable<OrderListDto>>> GetOrdersAsync(Guid? uploadId = null)
+    public async Task<ApiResponse<IEnumerable<OrderListDto>>> GetOrdersAsync(Guid? uploadId = null, DateTime? fromDate = null, DateTime? toDate = null)
     {
         try
         {
             // Get orders based on filter
             var orders = uploadId.HasValue
                 ? await _orderRepository.GetOrdersByUploadIdAsync(uploadId.Value)
-                : await _orderRepository.GetAllOrdersAsync();
+                : fromDate.HasValue || toDate.HasValue
+                    ? await _orderRepository.GetOrdersByDateRangeAsync(fromDate, toDate)
+                    : await _orderRepository.GetAllOrdersAsync();
 
             // Map to DTOs with TotalParts count
             var orderDtos = orders.Select(o => new OrderListDto
@@ -62,7 +64,9 @@ public class OrderService : IOrderService
 
             var message = uploadId.HasValue
                 ? $"Retrieved {orderDtos.Count} order(s) for upload {uploadId.Value}"
-                : $"Retrieved {orderDtos.Count} order(s)";
+                : fromDate.HasValue || toDate.HasValue
+                    ? $"Retrieved {orderDtos.Count} order(s) for date range"
+                    : $"Retrieved {orderDtos.Count} order(s)";
 
             _logger.LogInformation(message);
 
@@ -72,7 +76,8 @@ public class OrderService : IOrderService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving orders. UploadId: {UploadId}", uploadId);
+            _logger.LogError(ex, "Error retrieving orders. UploadId: {UploadId}, FromDate: {FromDate}, ToDate: {ToDate}",
+                uploadId, fromDate, toDate);
             return ApiResponse<IEnumerable<OrderListDto>>.ErrorResponse(
                 "Failed to retrieve orders",
                 ex.Message);
