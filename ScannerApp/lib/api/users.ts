@@ -22,7 +22,7 @@ export interface User {
   menuLevel?: string;
   operation?: string;
   code?: string; // Single code field - can be Office or Warehouse code
-  isSupervisor: boolean;
+  supervisor: boolean;
   isActive: boolean;
   lastLoginAt?: string;
   createdAt: string;
@@ -54,7 +54,7 @@ export interface UpdateUserDto {
   menuLevel?: string;
   operation?: string;
   code?: string; // Single code (Office or Warehouse)
-  isSupervisor?: boolean;
+  supervisor?: boolean;
   isActive?: boolean;
 }
 

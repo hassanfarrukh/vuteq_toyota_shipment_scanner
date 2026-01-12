@@ -39,7 +39,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Helper function to map backend role to frontend UserRole
-function mapBackendRoleToUserRole(backendRole: string): UserRole {
+// Takes supervisor boolean as priority check - if true, role is SUPERVISOR
+function mapBackendRoleToUserRole(backendRole: string, supervisor?: boolean): UserRole {
+  // If supervisor flag is explicitly true, return SUPERVISOR
+  if (supervisor === true) return 'SUPERVISOR';
+
   const roleUpper = backendRole.toUpperCase();
 
   if (roleUpper.includes('ADMIN')) return 'ADMIN';
@@ -143,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         backendUserId: result.user.id,
         backendUsername: result.user.username,
         backendRole: result.user.role,
+        supervisor: result.user.supervisor,
       });
 
       // Map backend user to AuthUser format
@@ -150,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: result.user.id,
         username: result.user.username,
         name: result.user.name,
-        role: mapBackendRoleToUserRole(result.user.role),
+        role: mapBackendRoleToUserRole(result.user.role, result.user.supervisor),
         locationId: 'loc-001', // Default location for now
       };
 

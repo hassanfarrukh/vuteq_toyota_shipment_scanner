@@ -138,7 +138,7 @@ public class DockMonitorService : IDockMonitorService
             {
                 shipmentDict[groupKey] = new DockMonitorShipmentDto
                 {
-                    RouteNumber = session?.RouteNumber ?? order.MainRoute ?? order.RealOrderNumber,
+                    RouteNumber = session?.RouteNumber ?? order.PlannedRoute ?? order.RealOrderNumber,
                     Run = session?.Run ?? ExtractRun(order.MainRoute),
                     SupplierCode = session?.SupplierCode ?? order.SupplierCode,
                     PickupDateTime = session?.PickupDateTime ?? order.PlannedPickup,
@@ -178,7 +178,9 @@ public class DockMonitorService : IDockMonitorService
             CompletedShipmentLoad = order.ToyotaShipmentSubmittedAt,
             IsSupplementOrder = false, // TODO: Determine supplement order logic
             ToyotaSkidBuildStatus = order.ToyotaSkidBuildStatus,
-            ToyotaShipmentStatus = order.ToyotaShipmentStatus
+            ToyotaShipmentStatus = order.ToyotaShipmentStatus,
+            ToyotaSkidBuildConfirmationNumber = order.ToyotaSkidBuildConfirmationNumber,
+            ToyotaShipmentConfirmationNumber = order.ToyotaShipmentConfirmationNumber
         };
 
         // Calculate status

@@ -129,7 +129,8 @@ namespace Backend.Services
                         Username = loginResult.Username ?? string.Empty,
                         Name = loginResult.Name ?? string.Empty,
                         Role = loginResult.Role ?? string.Empty,
-                        LocationId = loginResult.LocationId ?? string.Empty
+                        LocationId = loginResult.LocationId ?? string.Empty,
+                        Supervisor = loginResult.IsSupervisor
                     }
                 };
             }
@@ -185,7 +186,8 @@ namespace Backend.Services
                         Username = validationResult.Username ?? string.Empty,
                         Name = validationResult.Name ?? string.Empty,
                         Role = validationResult.Role ?? string.Empty,
-                        LocationId = validationResult.LocationId ?? string.Empty
+                        LocationId = validationResult.LocationId ?? string.Empty,
+                        Supervisor = validationResult.IsSupervisor
                     }
                 };
             }
@@ -215,6 +217,7 @@ namespace Backend.Services
                 new Claim(ClaimTypes.Name, user.Name ?? string.Empty),
                 new Claim(ClaimTypes.Role, user.Role ?? string.Empty),
                 new Claim("LocationId", user.LocationId ?? string.Empty),
+                new Claim("IsSupervisor", user.IsSupervisor.ToString()),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 

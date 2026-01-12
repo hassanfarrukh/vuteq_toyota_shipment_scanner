@@ -359,7 +359,7 @@ export default function AdministrationPage() {
         userName: user.name,
         username: user.username,
         email: user.email || '',
-        supervisor: user.isSupervisor,
+        supervisor: user.supervisor,
         menuLevel: user.menuLevel || 'Scanner',
         operation: user.operation || '',
         code: user.code || '',
@@ -781,7 +781,7 @@ export default function AdministrationPage() {
           menuLevel: userForm.menuLevel,
           operation: userForm.operation,
           code: userForm.code,
-          isSupervisor: userForm.supervisor,
+          supervisor: userForm.supervisor,
         };
 
         // Only include password if it was changed (not the placeholder)
@@ -2386,7 +2386,7 @@ export default function AdministrationPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Password *</label>
-            <Input type="password" value={userForm.password} onChange={(e) => setUserForm({...userForm, password: e.target.value})} />
+            <Input type="password" value={userForm.password} onChange={(e) => setUserForm({...userForm, password: e.target.value})} placeholder="Enter password" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>

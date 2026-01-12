@@ -63,7 +63,7 @@ export interface AdminUser {
   menuLevel?: string;
   operation?: string;
   code?: string;
-  isSupervisor: boolean;
+  supervisor: boolean;
   isActive: boolean;
   lastLoginAt?: string;
   createdAt: string;

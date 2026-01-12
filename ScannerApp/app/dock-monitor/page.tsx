@@ -15,8 +15,10 @@
  * Updated: 2025-10-29 - Fixed "Back to Dashboard" button to use standardized primary style with fa-light fa-home icon (Hassan)
  * Updated: 2025-10-30 - Added datetime display format (date + time) and table sorting functionality (Hassan)
  * Updated: 2025-12-24 - Integrated with real backend API (Hassan)
+ * Updated: 2026-01-12 - Added TSCN (Toyota Confirmation Number) columns for Skid Build and Shipment (Hassan)
+ * Updated: 2026-01-12 - Fixed full-width layout: removed container constraints, maximized table width (Hassan)
  * Real-time dock status monitoring with 5-minute auto-refresh
- * Displays 10 columns in table format showing 1.5 days of information
+ * Displays 12 columns in table format showing 1.5 days of information
  */
 
 'use client';
@@ -31,7 +33,7 @@ import { getDockMonitorData, type DockMonitorOrder } from '@/lib/api/dock-monito
 import VUTEQStaticBackground from '@/components/layout/VUTEQStaticBackground';
 import { usePageContext } from '@/contexts/PageContext';
 
-type SortColumn = 'order' | 'route' | 'destination' | 'supplier' | 'plannedSkidBuild' | 'completedSkidBuild' | 'plannedShipmentLoad' | 'completedShipmentLoad' | 'status';
+type SortColumn = 'order' | 'route' | 'destination' | 'supplier' | 'plannedSkidBuild' | 'completedSkidBuild' | 'tscnSkidBuild' | 'plannedShipmentLoad' | 'completedShipmentLoad' | 'tscnShipment' | 'status';
 type SortDirection = 'asc' | 'desc';
 
 // Type for flattened order (includes route from shipment)
@@ -295,6 +297,14 @@ export default function DockMonitorPage() {
         aValue = a.completedShipmentLoad || '';
         bValue = b.completedShipmentLoad || '';
         break;
+      case 'tscnSkidBuild':
+        aValue = a.toyotaSkidBuildConfirmationNumber || '';
+        bValue = b.toyotaSkidBuildConfirmationNumber || '';
+        break;
+      case 'tscnShipment':
+        aValue = a.toyotaShipmentConfirmationNumber || '';
+        bValue = b.toyotaShipmentConfirmationNumber || '';
+        break;
       case 'status':
         aValue = getStatusText(a.status);
         bValue = getStatusText(b.status);
@@ -332,7 +342,7 @@ export default function DockMonitorPage() {
       <VUTEQStaticBackground />
 
       {/* Content */}
-      <div className="relative px-2">
+      <div className="relative">
         {/* Status Legend - Compact inline */}
         <div className="flex flex-wrap items-center gap-2 text-xs pb-1 bg-white/80 rounded px-2 mb-1">
           <span className="font-bold text-gray-900">STATUS:</span>
@@ -374,10 +384,10 @@ export default function DockMonitorPage() {
           </Alert>
         )}
 
-        {/* Orders Table - Fits content */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-3 py-2">
-            <h2 className="text-base font-bold text-white">ORDER STATUS ({orders.length} ORDERS)</h2>
+        {/* Orders Table - Full width */}
+        <div className="bg-white rounded-lg shadow overflow-hidden w-full">
+          <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-2 py-1.5">
+            <h2 className="text-sm font-bold text-white">ORDER STATUS ({orders.length} ORDERS)</h2>
           </div>
           <div>
             {/* Loading State */}
@@ -403,7 +413,7 @@ export default function DockMonitorPage() {
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-gray-700 text-white">
                     <th
-                      className="px-3 py-2 text-center text-sm font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                       onClick={() => handleSort('order')}
                     >
                       <div className="flex items-center justify-center">
@@ -411,7 +421,7 @@ export default function DockMonitorPage() {
                       </div>
                     </th>
                     <th
-                      className="px-3 py-2 text-center text-sm font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                       onClick={() => handleSort('route')}
                     >
                       <div className="flex items-center justify-center">
@@ -419,7 +429,7 @@ export default function DockMonitorPage() {
                       </div>
                     </th>
                     <th
-                      className="px-3 py-2 text-center text-sm font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                       onClick={() => handleSort('destination')}
                     >
                       <div className="flex items-center justify-center">
@@ -427,7 +437,7 @@ export default function DockMonitorPage() {
                       </div>
                     </th>
                     <th
-                      className="px-3 py-2 text-center text-sm font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                       onClick={() => handleSort('supplier')}
                     >
                       <div className="flex items-center justify-center">
@@ -435,7 +445,7 @@ export default function DockMonitorPage() {
                       </div>
                     </th>
                     <th
-                      className="px-3 py-2 text-center text-sm font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                       onClick={() => handleSort('plannedSkidBuild')}
                     >
                       <div className="flex items-center justify-center">
@@ -443,7 +453,7 @@ export default function DockMonitorPage() {
                       </div>
                     </th>
                     <th
-                      className="px-3 py-2 text-center text-sm font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                       onClick={() => handleSort('completedSkidBuild')}
                     >
                       <div className="flex items-center justify-center">
@@ -451,23 +461,39 @@ export default function DockMonitorPage() {
                       </div>
                     </th>
                     <th
-                      className="px-3 py-2 text-center text-sm font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      onClick={() => handleSort('tscnSkidBuild')}
+                    >
+                      <div className="flex items-center justify-center">
+                        TSCN<br/>Skid Build{getSortIcon('tscnSkidBuild')}
+                      </div>
+                    </th>
+                    <th
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                       onClick={() => handleSort('plannedShipmentLoad')}
                     >
                       <div className="flex items-center justify-center">
-                        Planned<br/>Pre-shipment Scan{getSortIcon('plannedShipmentLoad')}
+                        Planned<br/>Shipment{getSortIcon('plannedShipmentLoad')}
                       </div>
                     </th>
                     <th
-                      className="px-3 py-2 text-center text-sm font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                       onClick={() => handleSort('completedShipmentLoad')}
                     >
                       <div className="flex items-center justify-center">
-                        Completed<br/>Pre-shipment Scan{getSortIcon('completedShipmentLoad')}
+                        Completed<br/>Shipment{getSortIcon('completedShipmentLoad')}
                       </div>
                     </th>
                     <th
-                      className="px-3 py-2 text-center text-sm font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
+                      onClick={() => handleSort('tscnShipment')}
+                    >
+                      <div className="flex items-center justify-center">
+                        TSCN<br/>Shipment{getSortIcon('tscnShipment')}
+                      </div>
+                    </th>
+                    <th
+                      className="px-2 py-2 text-center text-xs font-bold uppercase border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                       onClick={() => handleSort('status')}
                     >
                       <div className="flex items-center justify-center">
@@ -482,32 +508,38 @@ export default function DockMonitorPage() {
                       key={index}
                       className={`${getStatusRowClass(order.status)} transition-colors hover:opacity-80`}
                     >
-                      <td className="px-3 py-1.5 text-sm font-mono font-bold text-gray-900 border border-gray-300 text-center">
+                      <td className="px-2 py-1.5 text-xs font-mono font-bold text-gray-900 border border-gray-300 text-center">
                         {getDisplayOrderNumber(order)}
                       </td>
-                      <td className="px-3 py-1.5 text-sm font-semibold text-gray-900 border border-gray-300 text-center">
+                      <td className="px-2 py-1.5 text-xs font-semibold text-gray-900 border border-gray-300 text-center">
                         {order.route}
                       </td>
-                      <td className="px-3 py-1.5 text-sm font-semibold text-gray-900 border border-gray-300 text-center">
+                      <td className="px-2 py-1.5 text-xs font-semibold text-gray-900 border border-gray-300 text-center">
                         {order.destination || order.dockCode || '-'}
                       </td>
-                      <td className="px-3 py-1.5 text-sm font-medium text-gray-900 border border-gray-300">
+                      <td className="px-2 py-1.5 text-xs font-medium text-gray-900 border border-gray-300 text-center">
                         {order.supplierCode || '-'}
                       </td>
-                      <td className="px-3 py-1.5 text-sm font-mono text-gray-900 border border-gray-300 text-center">
+                      <td className="px-2 py-1.5 text-xs font-mono text-gray-900 border border-gray-300 text-center">
                         {formatTime(order.plannedSkidBuild)}
                       </td>
-                      <td className="px-3 py-1.5 text-sm font-mono text-gray-900 border border-gray-300 text-center">
+                      <td className="px-2 py-1.5 text-xs font-mono text-gray-900 border border-gray-300 text-center">
                         {formatTime(order.completedSkidBuild)}
                       </td>
-                      <td className="px-3 py-1.5 text-sm font-mono text-gray-900 border border-gray-300 text-center">
+                      <td className="px-2 py-1.5 text-xs font-medium text-gray-900 border border-gray-300 text-center">
+                        {order.toyotaSkidBuildConfirmationNumber || '-'}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs font-mono text-gray-900 border border-gray-300 text-center">
                         {formatTime(order.plannedShipmentLoad)}
                       </td>
-                      <td className="px-3 py-1.5 text-sm font-mono text-gray-900 border border-gray-300 text-center">
+                      <td className="px-2 py-1.5 text-xs font-mono text-gray-900 border border-gray-300 text-center">
                         {formatTime(order.completedShipmentLoad)}
                       </td>
-                      <td className="px-3 py-1.5 text-sm border border-gray-300 text-center">
-                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${getStatusBubbleClass(order.status)}`}>
+                      <td className="px-2 py-1.5 text-xs font-medium text-gray-900 border border-gray-300 text-center">
+                        {order.toyotaShipmentConfirmationNumber || '-'}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs border border-gray-300 text-center">
+                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${getStatusBubbleClass(order.status)}`}>
                           {getStatusText(order.status)}
                         </span>
                       </td>
@@ -522,25 +554,25 @@ export default function DockMonitorPage() {
 
           {/* Pagination Controls */}
           {orders.length > 0 && (
-            <div className="flex items-center justify-between px-3 py-2 bg-gray-100 border-t">
-              <div className="text-sm text-gray-600">
+            <div className="flex items-center justify-between px-2 py-1.5 bg-gray-100 border-t">
+              <div className="text-xs text-gray-600">
                 Showing {startIndex + 1}-{Math.min(endIndex, orders.length)} of {orders.length} orders
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="px-3 py-1 text-sm font-medium bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2 py-1 text-xs font-medium bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <i className="fa-light fa-chevron-left mr-1"></i> Prev
                 </button>
-                <span className="text-sm text-gray-700 font-medium">
+                <span className="text-xs text-gray-700 font-medium">
                   Page {currentPage} of {totalPages}
                 </span>
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-1 text-sm font-medium bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2 py-1 text-xs font-medium bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next <i className="fa-light fa-chevron-right ml-1"></i>
                 </button>

@@ -26,6 +26,7 @@ interface LoginResponse {
     name: string;
     email?: string;
     role: string;
+    supervisor?: boolean;
   };
 }
 
@@ -39,6 +40,7 @@ interface ApiResponse {
     name: string;
     email?: string;
     role: string;
+    supervisor?: boolean;
   };
   token?: string;
   errors?: string[];
@@ -59,6 +61,7 @@ export async function login(username: string, password: string): Promise<{
     name: string;
     email?: string;
     role: string;
+    supervisor?: boolean;
   };
   error?: string;
 }> {

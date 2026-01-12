@@ -59,5 +59,10 @@ namespace Backend.Models
         /// Location/Warehouse ID
         /// </summary>
         public string LocationId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Indicates if the user is a supervisor
+        /// </summary>
+        public bool Supervisor { get; set; }
     }
 }

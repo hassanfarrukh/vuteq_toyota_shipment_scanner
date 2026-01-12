@@ -103,7 +103,8 @@ namespace Backend.Repositories
                     Username = user.Username,
                     Name = user.Name,
                     Role = user.Role,
-                    LocationId = user.LocationId
+                    LocationId = user.LocationId,
+                    IsSupervisor = user.IsSupervisor
                 };
             }
             catch (Exception ex)
@@ -169,7 +170,8 @@ namespace Backend.Repositories
                     Username = session.User.Username,
                     Name = session.User.Name,
                     Role = session.User.Role,
-                    LocationId = session.User.LocationId
+                    LocationId = session.User.LocationId,
+                    IsSupervisor = session.User.IsSupervisor
                 };
             }
             catch (Exception ex)
@@ -229,6 +231,7 @@ namespace Backend.Repositories
         public string? Name { get; set; }
         public string? Role { get; set; }
         public string? LocationId { get; set; }
+        public bool IsSupervisor { get; set; }
         public string? ErrorMessage { get; set; }
     }
 
@@ -243,6 +246,7 @@ namespace Backend.Repositories
         public string? Name { get; set; }
         public string? Role { get; set; }
         public string? LocationId { get; set; }
+        public bool IsSupervisor { get; set; }
         public string? ErrorMessage { get; set; }
     }
 }

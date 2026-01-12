@@ -1,5 +1,5 @@
 // Author: Hassan
-// Date: 2025-12-01
+// Date: 2026-01-12
 // Description: DTO for order upload response with extracted data summary
 
 namespace Backend.Models.DTOs;
@@ -28,6 +28,11 @@ public class OrderUploadResponseDto
     /// Upload timestamp
     /// </summary>
     public DateTime UploadDate { get; set; }
+
+    /// <summary>
+    /// Username of the user who uploaded the file
+    /// </summary>
+    public string? UploadedByUsername { get; set; }
 
     /// <summary>
     /// Upload status: pending, processing, success, error

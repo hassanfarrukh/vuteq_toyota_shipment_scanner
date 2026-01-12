@@ -178,6 +178,24 @@ export function getErrorMessage(error: unknown): string {
         return data.errors.join(' ');
       }
 
+      // Handle ASP.NET Core validation errors object format: {"FieldName": ["error1", "error2"]}
+      if (data.errors && typeof data.errors === 'object' && !Array.isArray(data.errors)) {
+        const errorMessages: string[] = [];
+        Object.entries(data.errors).forEach(([field, messages]) => {
+          if (Array.isArray(messages)) {
+            errorMessages.push(...messages);
+          }
+        });
+        if (errorMessages.length > 0) {
+          return errorMessages.join(' ');
+        }
+      }
+
+      // Handle ASP.NET Core ProblemDetails title (e.g., "One or more validation errors occurred.")
+      if (data.title) {
+        return data.title;
+      }
+
       // Handle ApiResponse format - message is the short summary
       if (data.message) {
         return data.message;

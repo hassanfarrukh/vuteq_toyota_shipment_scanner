@@ -359,7 +359,8 @@ public class OrderUploadService : IOrderUploadService
                 TotalItemsCreated = u.TotalItemsCreated,
                 TotalManifestsCreated = u.TotalManifestsCreated,
                 OrdersSkipped = 0, // Historical records don't have this data
-                SkippedOrderNumbers = new List<string>()
+                SkippedOrderNumbers = new List<string>(),
+                UploadedByUsername = u.UploadedByUser?.Username
             });
 
             return ApiResponse<IEnumerable<OrderUploadResponseDto>>.SuccessResponse(
@@ -402,7 +403,8 @@ public class OrderUploadService : IOrderUploadService
                 TotalItemsCreated = upload.TotalItemsCreated,
                 TotalManifestsCreated = upload.TotalManifestsCreated,
                 OrdersSkipped = 0, // Historical records don't have this data
-                SkippedOrderNumbers = new List<string>()
+                SkippedOrderNumbers = new List<string>(),
+                UploadedByUsername = upload.UploadedByUser?.Username
             };
 
             return ApiResponse<OrderUploadResponseDto>.SuccessResponse(

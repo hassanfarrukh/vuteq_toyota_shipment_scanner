@@ -160,7 +160,7 @@ public class UpdateSiteSettingsRequest
     /// Order lookback hours - how far back to search for orders (default: 36)
     /// </summary>
     [Required(ErrorMessage = "DockOrderLookbackHours is required")]
-    [Range(1, 168, ErrorMessage = "DockOrderLookbackHours must be between 1 and 168 hours")]
+    [Range(1, 8760, ErrorMessage = "DockOrderLookbackHours must be between 1 and 8760 hours (1 year)")]
     public int DockOrderLookbackHours { get; set; }
 
     #endregion
@@ -177,7 +177,7 @@ public class UpdateSiteSettingsRequest
     /// Duplicate window in hours - time period to check for duplicates (default: 24)
     /// </summary>
     [Required(ErrorMessage = "KanbanDuplicateWindowHours is required")]
-    [Range(1, 168, ErrorMessage = "KanbanDuplicateWindowHours must be between 1 and 168 hours")]
+    [Range(1, 8760, ErrorMessage = "KanbanDuplicateWindowHours must be between 1 and 8760 hours (1 year)")]
     public int KanbanDuplicateWindowHours { get; set; }
 
     /// <summary>

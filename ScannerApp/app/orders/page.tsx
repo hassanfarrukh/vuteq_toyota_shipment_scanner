@@ -67,6 +67,7 @@ interface UploadedFile {
   fileName: string;
   fileSize: number;
   uploadDate: string;
+  uploadedByUsername: string | null;
   status: 'success' | 'pending' | 'error' | 'warning';
   ordersCreated?: number;
   totalItemsCreated?: number;
@@ -119,7 +120,7 @@ interface PlannedItem {
 type TabType = 'imported-files' | 'planned-orders' | 'planned-parts';
 
 // Sort types for each table
-type FilesSortColumn = 'fileName' | 'uploadDate' | 'fileSize' | 'ordersCreated' | 'status';
+type FilesSortColumn = 'fileName' | 'uploadDate' | 'uploadedByUsername' | 'ordersCreated' | 'status';
 type OrdersSortColumn = 'realOrderNumber' | 'totalParts' | 'dockCode' | 'departureDate' | 'orderDate' | 'status' | 'mainRoute' | 'plannedRoute';
 type PartsSortColumn = 'realOrderNumber' | 'partNumber' | 'kanbanNumber' | 'internalKanban' | 'qpc' | 'totalBoxPlanned' | 'manifestNo' | 'palletizationCode' | 'shortOver';
 type SortDirection = 'asc' | 'desc';
@@ -183,6 +184,7 @@ export default function OrdersPage() {
           fileName: upload.fileName,
           fileSize: upload.fileSize,
           uploadDate: upload.uploadDate,
+          uploadedByUsername: upload.uploadedByUsername,
           status: upload.status as 'success' | 'pending' | 'error' | 'warning',
           ordersCreated: upload.ordersCreated,
           totalItemsCreated: upload.totalItemsCreated,
@@ -365,6 +367,7 @@ export default function OrdersPage() {
           fileName: response.data.fileName,
           fileSize: response.data.fileSize,
           uploadDate: response.data.uploadDate,
+          uploadedByUsername: response.data.uploadedByUsername,
           status: response.data.status as 'success' | 'pending' | 'error' | 'warning',
           ordersCreated: response.data.ordersCreated,
           totalItemsCreated: response.data.totalItemsCreated,
@@ -1025,10 +1028,10 @@ export default function OrdersPage() {
                                 </th>
                                 <th
                                   className="px-4 py-3 text-sm font-semibold text-gray-700 hidden md:table-cell cursor-pointer hover:bg-gray-100 transition-colors"
-                                  onClick={() => handleFilesSort('fileSize')}
+                                  onClick={() => handleFilesSort('uploadedByUsername')}
                                 >
                                   <div className="flex items-center">
-                                    File Size{getSortIcon(filesSortColumn === 'fileSize', filesSortDirection)}
+                                    Uploaded By{getSortIcon(filesSortColumn === 'uploadedByUsername', filesSortDirection)}
                                   </div>
                                 </th>
                                 <th
@@ -1071,7 +1074,7 @@ export default function OrdersPage() {
                                     {formatDate(file.uploadDate)}
                                   </td>
                                   <td className="px-4 py-4 text-sm text-gray-600 hidden md:table-cell">
-                                    {formatFileSize(file.fileSize)}
+                                    {file.uploadedByUsername || <span className="text-gray-400">-</span>}
                                   </td>
                                   <td className="px-4 py-4 text-sm text-gray-600 hidden lg:table-cell">
                                     {file.ordersCreated !== undefined ? (

@@ -19,8 +19,8 @@ export interface DockMonitorOrder {
   completedShipmentLoad: string | null;
   status: 'COMPLETED' | 'ON_TIME' | 'BEHIND' | 'CRITICAL' | 'PROJECT_SHORT' | 'SHORT_SHIPPED';
   isSupplementOrder: boolean;
-  toyotaSkidBuildStatus: string | null;
-  toyotaShipmentStatus: string | null;
+  toyotaSkidBuildConfirmationNumber: string | null;
+  toyotaShipmentConfirmationNumber: string | null;
 }
 
 export interface DockMonitorShipment {

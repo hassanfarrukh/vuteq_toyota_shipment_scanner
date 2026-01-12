@@ -199,9 +199,8 @@ public class UpdateUserRequest
     public string? NickName { get; set; }
 
     /// <summary>
-    /// User email address - Optional
+    /// User email address - Optional (empty string allowed for updates)
     /// </summary>
-    [EmailAddress(ErrorMessage = "Invalid email format")]
     [MaxLength(200, ErrorMessage = "Email cannot exceed 200 characters")]
     public string? Email { get; set; }
 
@@ -212,9 +211,8 @@ public class UpdateUserRequest
     public string? NotificationName { get; set; }
 
     /// <summary>
-    /// Notification email address - Optional
+    /// Notification email address - Optional (empty string allowed for updates)
     /// </summary>
-    [EmailAddress(ErrorMessage = "Invalid notification email format")]
     [MaxLength(200, ErrorMessage = "Notification email cannot exceed 200 characters")]
     public string? NotificationEmail { get; set; }
 

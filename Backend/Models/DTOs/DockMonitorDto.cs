@@ -80,6 +80,16 @@ public class DockMonitorOrderDto
     /// Toyota shipment status: pending, submitted, confirmed, error
     /// </summary>
     public string? ToyotaShipmentStatus { get; set; }
+
+    /// <summary>
+    /// Toyota confirmation number from Skid Build submission
+    /// </summary>
+    public string? ToyotaSkidBuildConfirmationNumber { get; set; }
+
+    /// <summary>
+    /// Toyota confirmation number from Shipment Load submission
+    /// </summary>
+    public string? ToyotaShipmentConfirmationNumber { get; set; }
 }
 
 /// <summary>

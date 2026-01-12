@@ -175,6 +175,9 @@ public class UserService : IUserService
     {
         try
         {
+            // Convert empty strings to null for optional fields
+            if (string.IsNullOrWhiteSpace(request.Email)) request.Email = null;
+
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null)
             {

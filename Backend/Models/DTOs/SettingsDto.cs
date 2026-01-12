@@ -52,7 +52,7 @@ public class UpdateInternalKanbanSettingsRequest
     /// Duplicate window in hours (time window to check for duplicates)
     /// </summary>
     [Required(ErrorMessage = "DuplicateWindowHours is required")]
-    [Range(1, 168, ErrorMessage = "DuplicateWindowHours must be between 1 and 168 hours (1 week)")]
+    [Range(1, 8760, ErrorMessage = "DuplicateWindowHours must be between 1 and 8760 hours (1 year)")]
     public int DuplicateWindowHours { get; set; }
 
     /// <summary>

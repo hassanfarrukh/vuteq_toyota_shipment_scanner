@@ -37,6 +37,7 @@ export interface OrderUploadResponseDto {
   fileName: string;
   fileSize: number;
   uploadDate: string;
+  uploadedByUsername: string | null;
   status: 'pending' | 'processing' | 'success' | 'error';
   ordersCreated: number;
   totalItemsCreated: number;
