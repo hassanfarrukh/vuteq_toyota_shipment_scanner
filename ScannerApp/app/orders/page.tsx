@@ -155,6 +155,7 @@ export default function OrdersPage() {
   // Archive view state
   const [isArchivedView, setIsArchivedView] = useState(false);
   const [orderArchiveDays, setOrderArchiveDays] = useState(14);
+  const [latestUploadDate, setLatestUploadDate] = useState<string | null>(null);
 
   // Pagination state for each tab
   const [filesPage, setFilesPage] = useState(1);
@@ -176,7 +177,25 @@ export default function OrdersPage() {
   useEffect(() => {
     loadSiteSettings();
     loadOrders();
+    loadLatestUploadDate();
   }, []);
+
+  // Fetch the latest upload date (unfiltered) - for display purposes only
+  const loadLatestUploadDate = async () => {
+    try {
+      // Get all uploads without date filtering to find the latest
+      const response = await orderUploadsApi.getUploadHistory();
+      if (response.success && response.data && response.data.length > 0) {
+        // Sort by uploadDate descending and get the first (most recent)
+        const sortedUploads = [...response.data].sort((a, b) => {
+          return new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime();
+        });
+        setLatestUploadDate(sortedUploads[0].uploadDate);
+      }
+    } catch (e) {
+      console.error('Error loading latest upload date:', e);
+    }
+  };
 
   // Load upload history when archived view changes
   useEffect(() => {
@@ -419,15 +438,10 @@ export default function OrdersPage() {
 
   // Get most recent upload timestamp
   const getLastUploadTime = (): string => {
-    if (uploadedFiles.length === 0) {
+    if (!latestUploadDate) {
       return 'No orders uploaded yet';
     }
-    // Sort by uploadDate descending and get the first (most recent)
-    const sortedFiles = [...uploadedFiles].sort((a, b) => {
-      return new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime();
-    });
-    const lastFile = sortedFiles[0];
-    return formatDate(lastFile.uploadDate);
+    return formatDate(latestUploadDate);
   };
 
   // Handle file selection - upload to API
@@ -481,6 +495,9 @@ export default function OrdersPage() {
 
         // Add to files list
         setUploadedFiles(prev => [newFile, ...prev]);
+
+        // Reload latest upload date to update "Last order uploaded at" display
+        loadLatestUploadDate();
 
         // Switch to Imported Files tab after successful upload
         setActiveTab('imported-files');
@@ -945,14 +962,43 @@ export default function OrdersPage() {
           {/* Main Content Card with Tabs */}
           <Card>
             <CardContent className="p-0">
-              {/* Last Upload Time + Upload Button - Top row inside card */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-6 pt-6 pb-4">
-                {/* Left: Last Upload Time */}
+              {/* Last Upload Time - Top row inside card */}
+              <div className="px-6 pt-6 pb-4">
+                {/* Last Upload Time */}
                 <div className="flex items-center gap-2 text-gray-700">
                   <i className="fa fa-clock text-lg"></i>
                   <span className="text-sm">
                     Last order uploaded at: {getLastUploadTime()}
                   </span>
+                </div>
+              </div>
+
+              {/* Current/Archived Toggle Tabs + Upload Button */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-6 pb-4">
+                {/* Left: Current/Archived Tabs */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsArchivedView(false)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      !isArchivedView
+                        ? 'bg-[#253262] text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <i className="fa fa-clock mr-2"></i>
+                    Current (Last {orderArchiveDays} Days)
+                  </button>
+                  <button
+                    onClick={() => setIsArchivedView(true)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      isArchivedView
+                        ? 'bg-[#253262] text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <i className="fa fa-archive mr-2"></i>
+                    Archived (Older than {orderArchiveDays} Days)
+                  </button>
                 </div>
 
                 {/* Right: Upload New File Button */}
@@ -966,32 +1012,6 @@ export default function OrdersPage() {
                   <i className="fa-light fa-upload mr-2"></i>
                   Upload New File
                 </Button>
-              </div>
-
-              {/* Current/Archived Toggle Tabs */}
-              <div className="flex items-center gap-2 px-6 pb-4">
-                <button
-                  onClick={() => setIsArchivedView(false)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    !isArchivedView
-                      ? 'bg-[#253262] text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <i className="fa fa-clock mr-2"></i>
-                  Current (Last {orderArchiveDays} Days)
-                </button>
-                <button
-                  onClick={() => setIsArchivedView(true)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    isArchivedView
-                      ? 'bg-[#253262] text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <i className="fa fa-archive mr-2"></i>
-                  Archived (Older than {orderArchiveDays} Days)
-                </button>
               </div>
 
               {/* Tab Navigation + Search Bar */}
