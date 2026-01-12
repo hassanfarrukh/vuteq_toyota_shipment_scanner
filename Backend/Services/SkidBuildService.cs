@@ -389,7 +389,7 @@ public class SkidBuildService : ISkidBuildService
                 OrderId = request.OrderId,
                 Status = "active",
                 CurrentScreen = 1,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             var createdSession = await _skidBuildRepository.CreateSessionAsync(session);
@@ -622,9 +622,9 @@ public class SkidBuildService : ISkidBuildService
                 InternalKanban = request.InternalKanban,
                 InternalKanbanSerial = parsedKanban?.SerialNumber, // Issue #4: Store parsed serial for duplicate checking
                 PalletizationCode = request.PalletizationCode,
-                ScannedAt = DateTime.UtcNow,
+                ScannedAt = DateTime.Now,
                 ScannedBy = resolvedUserId,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             var createdScan = await _skidBuildRepository.CreateScanAsync(scan);
@@ -636,7 +636,7 @@ public class SkidBuildService : ISkidBuildService
                 if (order != null && order.Status == OrderStatus.Planned)
                 {
                     order.Status = OrderStatus.SkidBuilding;
-                    order.UpdatedAt = DateTime.UtcNow;
+                    order.UpdatedAt = DateTime.Now;
                     await _skidBuildRepository.UpdateOrderAsync(order);
 
                     _logger.LogInformation("Order {OrderId} status updated to SkidBuilding after first scan", order.OrderId);
@@ -704,7 +704,7 @@ public class SkidBuildService : ISkidBuildService
                 ExceptionCode = request.ExceptionCode,
                 Comments = request.Comments,
                 CreatedByUserId = resolvedUserId,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             var createdException = await _skidBuildRepository.CreateExceptionAsync(exception);
@@ -908,7 +908,7 @@ public class SkidBuildService : ISkidBuildService
                 order.Status = OrderStatus.SkidBuilt;
                 order.ToyotaSkidBuildConfirmationNumber = toyotaResponse.ConfirmationNumber;
                 order.ToyotaSkidBuildStatus = "confirmed";
-                order.ToyotaSkidBuildSubmittedAt = DateTime.UtcNow;
+                order.ToyotaSkidBuildSubmittedAt = DateTime.Now;
                 order.ToyotaSkidBuildErrorMessage = null;
 
                 _logger.LogInformation("Toyota API submission successful - ConfirmationNumber: {ConfirmationNumber}",
@@ -919,7 +919,7 @@ public class SkidBuildService : ISkidBuildService
                 order.Status = OrderStatus.SkidBuildError;
                 order.ToyotaSkidBuildStatus = "error";
                 order.ToyotaSkidBuildErrorMessage = toyotaResponse.ErrorMessage ?? "Unknown error from Toyota API";
-                order.ToyotaSkidBuildSubmittedAt = DateTime.UtcNow;
+                order.ToyotaSkidBuildSubmittedAt = DateTime.Now;
 
                 _logger.LogError("Toyota API submission failed - Code: {Code}, Error: {Error}",
                     toyotaResponse.Code, toyotaResponse.ErrorMessage);
@@ -935,8 +935,8 @@ public class SkidBuildService : ISkidBuildService
 
             // Update session
             session.Status = "completed";
-            session.CompletedAt = DateTime.UtcNow;
-            session.UpdatedAt = DateTime.UtcNow;
+            session.CompletedAt = DateTime.Now;
+            session.UpdatedAt = DateTime.Now;
 
             await _skidBuildRepository.UpdateSessionAsync(session);
 
@@ -1089,7 +1089,7 @@ public class SkidBuildService : ISkidBuildService
 
             // 9. Mark session as "cancelled"
             session.Status = "cancelled";
-            session.CompletedAt = DateTime.UtcNow;
+            session.CompletedAt = DateTime.Now;
             await _skidBuildRepository.UpdateSessionAsync(session);
             _logger.LogInformation("[SKID BUILD RESTART] Session {SessionId} marked as cancelled", sessionId);
 

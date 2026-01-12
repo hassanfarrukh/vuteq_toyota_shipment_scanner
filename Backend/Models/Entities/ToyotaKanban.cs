@@ -93,7 +93,7 @@ public class ToyotaKanban : AuditableEntity
 
     public Guid? SessionId { get; set; }
 
-    public DateTime ScannedAt { get; set; } = DateTime.UtcNow;
+    public DateTime ScannedAt { get; set; } = DateTime.Now;
 
     [MaxLength(50)]
     public string? ScannedBy { get; set; }

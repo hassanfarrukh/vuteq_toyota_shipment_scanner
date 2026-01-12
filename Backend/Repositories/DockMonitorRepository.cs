@@ -51,7 +51,7 @@ public class DockMonitorRepository : IDockMonitorRepository
     {
         try
         {
-            var cutoffTime = DateTime.UtcNow.AddHours(-hours);
+            var cutoffTime = DateTime.Now.AddHours(-hours);
 
             var orders = await _context.Orders
                 .AsNoTracking()
@@ -76,7 +76,7 @@ public class DockMonitorRepository : IDockMonitorRepository
     {
         try
         {
-            var cutoffTime = DateTime.UtcNow.AddHours(-hours);
+            var cutoffTime = DateTime.Now.AddHours(-hours);
 
             var sessions = await _context.ShipmentLoadSessions
                 .AsNoTracking()

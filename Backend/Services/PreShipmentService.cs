@@ -135,7 +135,7 @@ public class PreShipmentService : IPreShipmentService
                 PickupDateTime = null, // Will be set when completing
                 Status = "active",
                 CreatedVia = "PreShipment", // CRITICAL: Mark as Pre-Shipment
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.Now,
                 CreatedBy = request.ScannedBy.ToString()
             };
 
@@ -407,7 +407,7 @@ public class PreShipmentService : IPreShipmentService
 
             // Mark as cancelled instead of deleting
             session.Status = "cancelled";
-            session.UpdatedAt = DateTime.UtcNow;
+            session.UpdatedAt = DateTime.Now;
             await _repository.UpdateSessionAsync(session);
 
             _logger.LogInformation("[PRE-SHIPMENT] Session cancelled: {SessionId}", sessionId);

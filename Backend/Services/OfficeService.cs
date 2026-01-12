@@ -120,7 +120,7 @@ public class OfficeService : IOfficeService
                 Contact = request.Contact,
                 Email = request.Email,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             var createdOffice = await _officeRepository.CreateAsync(office);
@@ -167,7 +167,7 @@ public class OfficeService : IOfficeService
             office.Phone = request.Phone;
             office.Contact = request.Contact;
             office.Email = request.Email;
-            office.UpdatedAt = DateTime.UtcNow;
+            office.UpdatedAt = DateTime.Now;
 
             var updatedOffice = await _officeRepository.UpdateAsync(office);
 

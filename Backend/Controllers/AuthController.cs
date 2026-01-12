@@ -48,7 +48,7 @@ namespace Backend.Controllers
             _logger.LogInformation("Endpoint: POST /api/Auth/login");
             _logger.LogInformation("Client IP: {ClientIP}", HttpContext.Connection.RemoteIpAddress?.ToString());
             _logger.LogInformation("User-Agent: {UserAgent}", Request.Headers["User-Agent"].ToString());
-            _logger.LogInformation("Timestamp: {Timestamp}", DateTime.UtcNow);
+            _logger.LogInformation("Timestamp: {Timestamp}", DateTime.Now);
             _logger.LogInformation("Request body - Username: {Username}", request?.Username ?? "NULL");
 
             if (!ModelState.IsValid)
@@ -160,7 +160,7 @@ namespace Backend.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult Health()
         {
-            return Ok(new { status = "healthy", timestamp = DateTime.UtcNow });
+            return Ok(new { status = "healthy", timestamp = DateTime.Now });
         }
     }
 }

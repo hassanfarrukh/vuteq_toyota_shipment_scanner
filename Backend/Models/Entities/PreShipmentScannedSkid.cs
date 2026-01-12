@@ -35,7 +35,7 @@ public class PreShipmentScannedSkid : AuditableEntity
     [MaxLength(500)]
     public string? ScannedValue { get; set; }
 
-    public DateTime ScannedAt { get; set; } = DateTime.UtcNow;
+    public DateTime ScannedAt { get; set; } = DateTime.Now;
 
     // Navigation properties
     [ForeignKey(nameof(ShipmentId))]

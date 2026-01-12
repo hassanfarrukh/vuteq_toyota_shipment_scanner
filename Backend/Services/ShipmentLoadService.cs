@@ -157,7 +157,7 @@ public class ShipmentLoadService : IShipmentLoadService
                 // ShipmentLoad provides PickupDateTime from Pickup Route QR scan
                 bool needsUpdate = false;
 
-                if (existingSession.PickupDateTime == null && request.PickupDateTime != null)
+                if (existingSession.PickupDateTime == null && request.PickupDateTime != default)
                 {
                     _logger.LogInformation("Updating PickupDateTime for PreShipment session {SessionId}: {PickupDateTime}",
                         existingSession.SessionId, request.PickupDateTime);
@@ -167,7 +167,7 @@ public class ShipmentLoadService : IShipmentLoadService
 
                 if (needsUpdate)
                 {
-                    existingSession.UpdatedAt = DateTime.UtcNow;
+                    existingSession.UpdatedAt = DateTime.Now;
                     await _repository.UpdateSessionAsync(existingSession);
                 }
             }
@@ -186,7 +186,7 @@ public class ShipmentLoadService : IShipmentLoadService
                     SupplierCode = request.SupplierCode,
                     PickupDateTime = request.PickupDateTime,
                     Status = "active",
-                    CreatedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.Now,
                     CreatedBy = request.UserId.ToString()
                 };
 
@@ -245,7 +245,7 @@ public class ShipmentLoadService : IShipmentLoadService
             session.DriverLastName = request.DriverLastName;
             session.SupplierFirstName = request.SupplierFirstName;
             session.SupplierLastName = request.SupplierLastName;
-            session.UpdatedAt = DateTime.UtcNow;
+            session.UpdatedAt = DateTime.Now;
 
             session = await _repository.UpdateSessionAsync(session);
 
@@ -383,7 +383,7 @@ public class ShipmentLoadService : IShipmentLoadService
 
             // Update order status to ShipmentLoading
             order.Status = OrderStatus.ShipmentLoading;
-            order.UpdatedAt = DateTime.UtcNow;
+            order.UpdatedAt = DateTime.Now;
             await _repository.UpdateOrdersAsync(new List<Order> { order });
 
             // FIXED: If SkidId is provided, mark the individual skid as scanned
@@ -417,7 +417,7 @@ public class ShipmentLoadService : IShipmentLoadService
                 DockCode = order.DockCode,
                 Status = order.Status.ToString(),
                 ValidationMessage = $"Order {request.OrderNumber} validated successfully. {skidScansCount} skid(s) confirmed.",
-                ScannedAt = DateTime.UtcNow
+                ScannedAt = DateTime.Now
             };
 
             _logger.LogInformation("Order scanned for shipment: {OrderNumber}-{DockCode} linked to session {SessionId}",
@@ -454,7 +454,7 @@ public class ShipmentLoadService : IShipmentLoadService
                 Comments = request.Comments,
                 RelatedSkidId = request.RelatedSkidId,
                 CreatedByUser = request.CreatedByUserId.ToString(),
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             exception = await _repository.AddExceptionAsync(exception);
@@ -588,10 +588,10 @@ public class ShipmentLoadService : IShipmentLoadService
             session.ToyotaStatus = toyotaResponse.Success ? "confirmed" : "error";
             session.ToyotaConfirmationNumber = toyotaResponse.ConfirmationNumber;
             session.ToyotaErrorMessage = toyotaResponse.ErrorMessage;
-            session.ToyotaSubmittedAt = DateTime.UtcNow;
+            session.ToyotaSubmittedAt = DateTime.Now;
             session.Status = toyotaResponse.Success ? "completed" : "error";
-            session.CompletedAt = toyotaResponse.Success ? DateTime.UtcNow : null;
-            session.UpdatedAt = DateTime.UtcNow;
+            session.CompletedAt = toyotaResponse.Success ? DateTime.Now : null;
+            session.UpdatedAt = DateTime.Now;
 
             await _repository.UpdateSessionAsync(session);
 
@@ -605,8 +605,8 @@ public class ShipmentLoadService : IShipmentLoadService
                     order.Status = OrderStatus.ShipmentError;
                     order.ToyotaShipmentStatus = "error";
                     order.ToyotaShipmentErrorMessage = toyotaResponse.ErrorMessage ?? "Unknown error from Toyota API";
-                    order.ToyotaShipmentSubmittedAt = DateTime.UtcNow;
-                    order.UpdatedAt = DateTime.UtcNow;
+                    order.ToyotaShipmentSubmittedAt = DateTime.Now;
+                    order.UpdatedAt = DateTime.Now;
                 }
                 await _repository.UpdateOrdersAsync(orders);
 
@@ -616,7 +616,7 @@ public class ShipmentLoadService : IShipmentLoadService
             }
 
             // 7. Update all orders with shipment details
-            var completionTime = DateTime.UtcNow;
+            var completionTime = DateTime.Now;
             var shippedOrderNumbers = new List<string>();
 
             foreach (var order in orders)
@@ -1042,7 +1042,7 @@ public class ShipmentLoadService : IShipmentLoadService
                 Supplier = orderSupplierCode, // ORDER LEVEL SUPPLIER (should match root level)
                 Plant = order.PlantCode!,
                 Dock = order.DockCode,
-                PickUp = session.PickupDateTime?.ToString("yyyy-MM-ddTHH:mm") ?? DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm"),
+                PickUp = session.PickupDateTime?.ToString("yyyy-MM-ddTHH:mm") ?? DateTime.Now.ToString("yyyy-MM-ddTHH:mm"),
                 Skids = uniqueSkids.Select(scan => new ToyotaShipmentSkid
                 {
                     SkidId = scan.RawSkidId!, // Use RawSkidId which includes side (e.g., "001A")
@@ -1223,7 +1223,7 @@ public class ShipmentLoadService : IShipmentLoadService
 
             // 7. Mark session as "cancelled" (keep for audit trail)
             session.Status = "cancelled";
-            session.CompletedAt = DateTime.UtcNow;
+            session.CompletedAt = DateTime.Now;
             await _repository.UpdateSessionAsync(session);
             _logger.LogInformation("[SHIPMENT LOAD RESTART] Session {SessionId} marked as cancelled", sessionId);
 

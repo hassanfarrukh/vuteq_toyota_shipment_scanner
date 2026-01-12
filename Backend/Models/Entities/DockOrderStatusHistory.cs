@@ -25,7 +25,7 @@ public class DockOrderStatusHistory : AuditableEntity
     [MaxLength(50)]
     public string? NewStatus { get; set; }
 
-    public DateTime ChangedAt { get; set; } = DateTime.UtcNow;
+    public DateTime ChangedAt { get; set; } = DateTime.Now;
 
     [MaxLength(50)]
     public string? ChangedBy { get; set; }

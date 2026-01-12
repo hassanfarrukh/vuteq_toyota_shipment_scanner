@@ -98,7 +98,7 @@ public class ToyotaConfigRepository : IToyotaConfigRepository
     {
         try
         {
-            config.CreatedAt = DateTime.UtcNow;
+            config.CreatedAt = DateTime.Now;
             _context.Set<ToyotaApiConfig>().Add(config);
             await _context.SaveChangesAsync();
 
@@ -119,7 +119,7 @@ public class ToyotaConfigRepository : IToyotaConfigRepository
     {
         try
         {
-            config.UpdatedAt = DateTime.UtcNow;
+            config.UpdatedAt = DateTime.Now;
             _context.Set<ToyotaApiConfig>().Update(config);
             await _context.SaveChangesAsync();
 

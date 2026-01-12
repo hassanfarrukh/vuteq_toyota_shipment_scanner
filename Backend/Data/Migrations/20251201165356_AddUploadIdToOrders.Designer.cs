@@ -1702,7 +1702,7 @@ namespace Backend.Data.Migrations
                         new
                         {
                             UserId = new Guid("00000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTime(2025, 11, 25, 0, 0, 0, 0, DateTimeKind.Utc),
+                            CreatedAt = new DateTime(2025, 11, 25, 0, 0, 0, 0, DateTimeKind.Local),
                             CreatedBy = "System",
                             IsActive = true,
                             IsSupervisor = true,

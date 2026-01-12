@@ -2,10 +2,12 @@
 // Date: 2025-12-04
 // Description: Service for Order Upload operations - handles Excel upload, parsing, and storage
 
+using Backend.Data;
 using Backend.Models;
 using Backend.Models.DTOs;
 using Backend.Models.Entities;
 using Backend.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace Backend.Services;
 
@@ -30,6 +32,7 @@ public class OrderUploadService : IOrderUploadService
     private readonly IExcelParserService _excelParserService;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<OrderUploadService> _logger;
+    private readonly VuteqDbContext _context;
 
     private const long MaxFileSize = 10 * 1024 * 1024; // 10MB
     private static readonly HashSet<string> AllowedFileTypes = new HashSet<string>
@@ -43,13 +46,15 @@ public class OrderUploadService : IOrderUploadService
         IOrderRepository orderRepository,
         IExcelParserService excelParserService,
         IWebHostEnvironment environment,
-        ILogger<OrderUploadService> logger)
+        ILogger<OrderUploadService> logger,
+        VuteqDbContext context)
     {
         _uploadRepository = uploadRepository;
         _orderRepository = orderRepository;
         _excelParserService = excelParserService;
         _environment = environment;
         _logger = logger;
+        _context = context;
     }
 
     /// <summary>
@@ -100,7 +105,7 @@ public class OrderUploadService : IOrderUploadService
                 FilePath = Path.Combine(UploadDirectory, uniqueFileName),
                 Status = "processing",
                 UploadedBy = userId,
-                UploadDate = DateTime.UtcNow
+                UploadDate = DateTime.Now
             };
 
             await _uploadRepository.CreateUploadAsync(uploadRecord);
@@ -192,7 +197,7 @@ public class OrderUploadService : IOrderUploadService
                     MainRoute = extractedOrder.MainRoute,
                     SpecialistCode = extractedOrder.SpecialistCode,
                     Mros = extractedOrder.Mros,
-                    CreatedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.Now,
                     CreatedBy = userId.ToString() // Set CreatedBy to the user who uploaded
                 };
 
@@ -216,7 +221,7 @@ public class OrderUploadService : IOrderUploadService
                     Pieces = item.Pieces, // Added 2025-12-09 - PIECES
                     PalletizationCode = item.PalletizationCode,
                     ExternalOrderId = item.ExternalOrderId ?? 0,
-                    CreatedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.Now,
                     CreatedBy = userId.ToString() // Set CreatedBy to the user who uploaded
                 }).ToList();
 
@@ -270,6 +275,12 @@ public class OrderUploadService : IOrderUploadService
             _logger.LogInformation("Order upload status updated: {UploadId} -> {Status} ({OrderCount} orders, {ItemCount} items, {SkippedCount} skipped)",
                 uploadRecord.Id, finalStatus, ordersCreated, itemsCreated, ordersSkipped);
 
+            // Get username for response
+            var username = await _context.UserMasters
+                .Where(u => u.UserId == userId)
+                .Select(u => u.Username)
+                .FirstOrDefaultAsync();
+
             // Build response
             var response = new OrderUploadResponseDto
             {
@@ -283,7 +294,8 @@ public class OrderUploadService : IOrderUploadService
                 TotalManifestsCreated = totalManifests,
                 OrdersSkipped = ordersSkipped,
                 SkippedOrderNumbers = skippedOrderNumbers,
-                ExtractedOrders = extractedOrders
+                ExtractedOrders = extractedOrders,
+                UploadedByUsername = username
             };
 
             // Determine response message and status based on results

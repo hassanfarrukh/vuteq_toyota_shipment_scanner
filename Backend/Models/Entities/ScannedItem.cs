@@ -37,7 +37,7 @@ public class ScannedItem : AuditableEntity
     [MaxLength(100)]
     public string? SerialNumber { get; set; }
 
-    public DateTime ScannedAt { get; set; } = DateTime.UtcNow;
+    public DateTime ScannedAt { get; set; } = DateTime.Now;
 
     // Navigation properties
     [ForeignKey(nameof(SessionId))]

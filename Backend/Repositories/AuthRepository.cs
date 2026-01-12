@@ -88,7 +88,7 @@ namespace Backend.Repositories
                 _logger.LogDebug("[DATABASE UPDATE] Updating LastLoginAt for user: {UserId}", user.UserId);
 
                 // 3. Update user's last login timestamp
-                user.LastLoginAt = DateTime.UtcNow;
+                user.LastLoginAt = DateTime.Now;
                 await _context.SaveChangesAsync();
 
                 _logger.LogDebug("[DATABASE UPDATE COMPLETE] LastLoginAt updated to: {LastLoginAt}", user.LastLoginAt);
@@ -143,7 +143,7 @@ namespace Backend.Repositories
                 }
 
                 // 3. Check if session expired
-                if (session.ExpiresAt < DateTime.UtcNow)
+                if (session.ExpiresAt < DateTime.Now)
                 {
                     _logger.LogWarning("Session validation failed: Token expired for user {UserId}", session.UserId);
 
@@ -159,7 +159,7 @@ namespace Backend.Repositories
                 }
 
                 // 4. Update last activity timestamp
-                session.LastActivityAt = DateTime.UtcNow;
+                session.LastActivityAt = DateTime.Now;
                 await _context.SaveChangesAsync();
 
                 // 5. Return successful validation result
@@ -202,7 +202,7 @@ namespace Backend.Repositories
                     Token = token,
                     ExpiresAt = expiresAt,
                     IsActive = true,
-                    LastActivityAt = DateTime.UtcNow
+                    LastActivityAt = DateTime.Now
                 };
 
                 // 3. Add to context and save

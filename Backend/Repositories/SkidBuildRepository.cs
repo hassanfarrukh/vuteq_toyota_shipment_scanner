@@ -563,7 +563,7 @@ public class SkidBuildRepository : ISkidBuildRepository
             if (string.IsNullOrWhiteSpace(serialNumber))
                 return false;
 
-            var cutoffTime = DateTime.UtcNow.AddHours(-windowHours);
+            var cutoffTime = DateTime.Now.AddHours(-windowHours);
 
             // Check if this serial number was scanned within the time window (across ALL orders)
             var exists = await _context.SkidScans

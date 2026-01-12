@@ -476,7 +476,7 @@ public class ExcelParserService : IExcelParserService
             // Try to get as DateTime directly
             if (cell.TryGetValue(out DateTime dateValue))
             {
-                return DateTime.SpecifyKind(dateValue, DateTimeKind.Utc);
+                return dateValue;
             }
 
             // Try to parse as string
@@ -505,14 +505,14 @@ public class ExcelParserService : IExcelParserService
                 if (DateTime.TryParseExact(stringValue, format, CultureInfo.InvariantCulture,
                     DateTimeStyles.None, out DateTime parsedDate))
                 {
-                    return DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc);
+                    return parsedDate;
                 }
             }
 
             // Try general parse as last resort
             if (DateTime.TryParse(stringValue, out DateTime generalDate))
             {
-                return DateTime.SpecifyKind(generalDate, DateTimeKind.Utc);
+                return generalDate;
             }
 
             return null;

@@ -146,7 +146,7 @@ public class UserService : IUserService
                 Code = request.Code,
                 IsSupervisor = request.Supervisor ?? false,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             var createdUser = await _userRepository.CreateAsync(user);
@@ -220,7 +220,7 @@ public class UserService : IUserService
                 user.PasswordHash = _authService.HashPassword(request.Password);
             }
 
-            user.UpdatedAt = DateTime.UtcNow;
+            user.UpdatedAt = DateTime.Now;
 
             var updatedUser = await _userRepository.UpdateAsync(user);
 

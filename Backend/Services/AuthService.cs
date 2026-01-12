@@ -52,7 +52,7 @@ namespace Backend.Services
             _logger.LogInformation("========================================");
             _logger.LogInformation("[LOGIN START] CorrelationId: {CorrelationId}", correlationId);
             _logger.LogInformation("Username: {Username}", request.Username);
-            _logger.LogInformation("Timestamp: {Timestamp}", DateTime.UtcNow);
+            _logger.LogInformation("Timestamp: {Timestamp}", DateTime.Now);
 
             try
             {
@@ -92,7 +92,7 @@ namespace Backend.Services
                     ? _jwtConfig.SupervisorExpiryMinutes
                     : _jwtConfig.ExpiryMinutes;
 
-                var expiresAt = DateTime.UtcNow.AddMinutes(expiryMinutes);
+                var expiresAt = DateTime.Now.AddMinutes(expiryMinutes);
                 _logger.LogDebug("[STEP 3 COMPLETE] Role: {Role}, Expiry: {ExpiryMinutes} minutes, ExpiresAt: {ExpiresAt}",
                     loginResult.Role, expiryMinutes, expiresAt);
 

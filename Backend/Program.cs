@@ -52,14 +52,14 @@ builder.Services.AddDbContext<VuteqDbContext>(options =>
 // Add configuration for JWT
 builder.Services.Configure<JwtConfiguration>(builder.Configuration.GetSection("Jwt"));
 
-// Add controllers with JSON options for TimeOnly and DateTime UTC support
+// Add controllers with JSON options for TimeOnly and DateTime (local time) support
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new TimeOnlyJsonConverter());
         options.JsonSerializerOptions.Converters.Add(new NullableTimeOnlyJsonConverter());
-        options.JsonSerializerOptions.Converters.Add(new DateTimeUtcJsonConverter());
-        options.JsonSerializerOptions.Converters.Add(new NullableDateTimeUtcJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new DateTimeLocalJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new NullableDateTimeLocalJsonConverter());
     });
 
 // Add CORS policy for Next.js frontend
@@ -340,10 +340,9 @@ public class NullableTimeOnlyJsonConverter : JsonConverter<TimeOnly?>
 }
 
 /// <summary>
-/// JSON converter for DateTime type - ensures UTC dates are serialized with "Z" suffix
-/// Issue #1 Fix: JavaScript interprets dates without "Z" as local time instead of UTC
+/// JSON converter for DateTime type - serializes DateTime as local time without timezone conversion
 /// </summary>
-public class DateTimeUtcJsonConverter : JsonConverter<DateTime>
+public class DateTimeLocalJsonConverter : JsonConverter<DateTime>
 {
     public override DateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -351,40 +350,35 @@ public class DateTimeUtcJsonConverter : JsonConverter<DateTime>
         if (string.IsNullOrEmpty(value))
             return default;
 
-        // Parse and ensure UTC
-        var parsed = DateTime.Parse(value, null, System.Globalization.DateTimeStyles.RoundtripKind);
-        return parsed.Kind == DateTimeKind.Utc ? parsed : parsed.ToUniversalTime();
+        // Parse as-is without forcing UTC
+        return DateTime.Parse(value, null, System.Globalization.DateTimeStyles.RoundtripKind);
     }
 
     public override void Write(Utf8JsonWriter writer, DateTime value, JsonSerializerOptions options)
     {
-        // Always output with "Z" suffix for UTC dates
-        // Format: yyyy-MM-ddTHH:mm:ssZ or yyyy-MM-ddTHH:mm:ss.fffZ
-        var utcValue = value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime();
-        writer.WriteStringValue(utcValue.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"));
+        // Serialize as-is without timezone conversion or "Z" suffix (local time)
+        writer.WriteStringValue(value.ToString("yyyy-MM-ddTHH:mm:ss.fff"));
     }
 }
 
 /// <summary>
-/// JSON converter for nullable DateTime type - ensures UTC dates are serialized with "Z" suffix or null
+/// JSON converter for nullable DateTime type - serializes DateTime as local time without timezone conversion or null
 /// </summary>
-public class NullableDateTimeUtcJsonConverter : JsonConverter<DateTime?>
+public class NullableDateTimeLocalJsonConverter : JsonConverter<DateTime?>
 {
     public override DateTime? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         var value = reader.GetString();
         if (string.IsNullOrEmpty(value)) return null;
 
-        var parsed = DateTime.Parse(value, null, System.Globalization.DateTimeStyles.RoundtripKind);
-        return parsed.Kind == DateTimeKind.Utc ? parsed : parsed.ToUniversalTime();
+        return DateTime.Parse(value, null, System.Globalization.DateTimeStyles.RoundtripKind);
     }
 
     public override void Write(Utf8JsonWriter writer, DateTime? value, JsonSerializerOptions options)
     {
         if (value.HasValue)
         {
-            var utcValue = value.Value.Kind == DateTimeKind.Utc ? value.Value : value.Value.ToUniversalTime();
-            writer.WriteStringValue(utcValue.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"));
+            writer.WriteStringValue(value.Value.ToString("yyyy-MM-ddTHH:mm:ss.fff"));
         }
         else
         {

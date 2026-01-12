@@ -452,7 +452,7 @@ public class PdfParserService : IPdfParserService
 
             try
             {
-                var date = new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+                var date = new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Local);
                 _logger.LogDebug("Extracted transmit date: {Date}", date.ToString("yyyy-MM-dd"));
                 return date;
             }
@@ -473,7 +473,7 @@ public class PdfParserService : IPdfParserService
 
             try
             {
-                var date = new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+                var date = new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Local);
                 _logger.LogDebug("Extracted transmit date (pattern 2): {Date}", date.ToString("yyyy-MM-dd"));
                 return date;
             }
@@ -518,9 +518,9 @@ public class PdfParserService : IPdfParserService
             int minute = int.Parse(timeMatch.Groups[2].Value);
 
             // Use current year if not specified (or extract from transmit date if available)
-            int year = DateTime.UtcNow.Year;
+            int year = DateTime.Now.Year;
 
-            var arriveDateTime = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Utc);
+            var arriveDateTime = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Local);
             _logger.LogDebug("Extracted arrive date/time: {DateTime}", arriveDateTime.ToString("yyyy-MM-dd HH:mm"));
             return arriveDateTime;
         }
@@ -562,9 +562,9 @@ public class PdfParserService : IPdfParserService
             int minute = int.Parse(timeMatch.Groups[2].Value);
 
             // Use current year if not specified
-            int year = DateTime.UtcNow.Year;
+            int year = DateTime.Now.Year;
 
-            var departDateTime = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Utc);
+            var departDateTime = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Local);
             _logger.LogDebug("Extracted depart date/time: {DateTime}", departDateTime.ToString("yyyy-MM-dd HH:mm"));
             return departDateTime;
         }
@@ -606,9 +606,9 @@ public class PdfParserService : IPdfParserService
             int minute = int.Parse(timeMatch.Groups[2].Value);
 
             // Use current year if not specified
-            int year = DateTime.UtcNow.Year;
+            int year = DateTime.Now.Year;
 
-            var unloadDateTime = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Utc);
+            var unloadDateTime = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Local);
             _logger.LogDebug("Extracted unload date/time: {DateTime}", unloadDateTime.ToString("yyyy-MM-dd HH:mm"));
             return unloadDateTime;
         }

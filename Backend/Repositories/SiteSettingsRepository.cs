@@ -60,7 +60,7 @@ public class SiteSettingsRepository : ISiteSettingsRepository
                     KanbanAllowDuplicates = false,
                     KanbanDuplicateWindowHours = 24,
                     KanbanAlertOnDuplicate = true,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.Now
                 };
 
                 _context.SiteSettings.Add(settings);
@@ -91,7 +91,7 @@ public class SiteSettingsRepository : ISiteSettingsRepository
             {
                 // Create new settings
                 settings.SettingId = Guid.NewGuid();
-                settings.CreatedAt = DateTime.UtcNow;
+                settings.CreatedAt = DateTime.Now;
                 _context.SiteSettings.Add(settings);
             }
             else
@@ -109,7 +109,7 @@ public class SiteSettingsRepository : ISiteSettingsRepository
                 existing.KanbanAllowDuplicates = settings.KanbanAllowDuplicates;
                 existing.KanbanDuplicateWindowHours = settings.KanbanDuplicateWindowHours;
                 existing.KanbanAlertOnDuplicate = settings.KanbanAlertOnDuplicate;
-                existing.UpdatedAt = DateTime.UtcNow;
+                existing.UpdatedAt = DateTime.Now;
                 existing.UpdatedBy = settings.UpdatedBy;
                 _context.SiteSettings.Update(existing);
             }

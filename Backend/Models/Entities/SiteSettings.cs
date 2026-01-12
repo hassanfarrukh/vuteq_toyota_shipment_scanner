@@ -97,7 +97,7 @@ public class SiteSettings
     /// <summary>
     /// Record creation timestamp
     /// </summary>
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     /// <summary>
     /// User who created the record

@@ -31,7 +31,7 @@ namespace Backend.Controllers
             return Ok(new
             {
                 status = "healthy",
-                timestamp = DateTime.UtcNow,
+                timestamp = DateTime.Now,
                 service = "VUTEQ Scanner API",
                 version = "1.0.0"
             });

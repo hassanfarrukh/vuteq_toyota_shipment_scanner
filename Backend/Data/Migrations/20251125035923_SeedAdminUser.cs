@@ -14,7 +14,7 @@ namespace Backend.Data.Migrations
             migrationBuilder.InsertData(
                 table: "tblUserMaster",
                 columns: new[] { "UserId", "Code", "CreatedAt", "CreatedBy", "Email", "IsActive", "IsSupervisor", "LastLoginAt", "LocationId", "MenuLevel", "Name", "Operation", "PasswordHash", "Role", "UpdatedAt", "UpdatedBy", "Username" },
-                values: new object[] { new Guid("00000000-0000-0000-0000-000000000001"), null, new DateTime(2025, 11, 25, 0, 0, 0, 0, DateTimeKind.Utc), "System", null, true, true, null, null, "Admin", "CISG", "Administration", "0FdNYlEZUSnULgc/q4ufuRnNQMRBW2eJwch7tEAkcho=", "Admin", null, null, "cisg" });
+                values: new object[] { new Guid("00000000-0000-0000-0000-000000000001"), null, new DateTime(2025, 11, 25, 0, 0, 0, 0, DateTimeKind.Local), "System", null, true, true, null, null, "Admin", "CISG", "Administration", "0FdNYlEZUSnULgc/q4ufuRnNQMRBW2eJwch7tEAkcho=", "Admin", null, null, "cisg" });
         }
 
         /// <inheritdoc />

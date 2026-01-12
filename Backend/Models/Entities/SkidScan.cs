@@ -87,7 +87,7 @@ public class SkidScan : AuditableEntity
     /// </summary>
     public Guid? ShipmentLoadSessionId { get; set; }
 
-    public DateTime ScannedAt { get; set; } = DateTime.UtcNow;
+    public DateTime ScannedAt { get; set; } = DateTime.Now;
 
     public Guid? ScannedBy { get; set; }
 

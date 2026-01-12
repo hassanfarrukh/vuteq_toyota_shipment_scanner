@@ -31,7 +31,7 @@ public class OrderUpload : AuditableEntity
 
     public Guid? UploadedBy { get; set; }
 
-    public DateTime UploadDate { get; set; } = DateTime.UtcNow;
+    public DateTime UploadDate { get; set; } = DateTime.Now;
 
     public string? ErrorMessage { get; set; }
 

@@ -72,7 +72,7 @@ public class SettingsRepository : ISettingsRepository
             {
                 // Create new settings
                 settings.SettingId = Guid.NewGuid();
-                settings.CreatedAt = DateTime.UtcNow;
+                settings.CreatedAt = DateTime.Now;
                 _context.SiteSettings.Add(settings);
                 await _context.SaveChangesAsync();
                 return settings;
@@ -98,7 +98,7 @@ public class SettingsRepository : ISettingsRepository
                 existing.KanbanAlertOnDuplicate = settings.KanbanAlertOnDuplicate;
 
                 // Audit
-                existing.UpdatedAt = DateTime.UtcNow;
+                existing.UpdatedAt = DateTime.Now;
                 existing.UpdatedBy = settings.UpdatedBy;
 
                 _context.SiteSettings.Update(existing);

@@ -136,7 +136,7 @@ public class WarehouseService : IWarehouseService
                 ContactEmail = request.ContactEmail,
                 OfficeCode = request.Office,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             var createdWarehouse = await _warehouseRepository.CreateAsync(warehouse);
@@ -193,7 +193,7 @@ public class WarehouseService : IWarehouseService
             warehouse.ContactName = request.ContactName;
             warehouse.ContactEmail = request.ContactEmail;
             warehouse.OfficeCode = request.Office;
-            warehouse.UpdatedAt = DateTime.UtcNow;
+            warehouse.UpdatedAt = DateTime.Now;
 
             var updatedWarehouse = await _warehouseRepository.UpdateAsync(warehouse);
 

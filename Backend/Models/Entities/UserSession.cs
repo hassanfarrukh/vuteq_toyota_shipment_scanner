@@ -29,7 +29,7 @@ public class UserSession : AuditableEntity
     [Required]
     public DateTime ExpiresAt { get; set; }
 
-    public DateTime LastActivityAt { get; set; } = DateTime.UtcNow;
+    public DateTime LastActivityAt { get; set; } = DateTime.Now;
 
     [MaxLength(50)]
     public string? IpAddress { get; set; }

@@ -29,7 +29,7 @@ public class SkidBuildDraft : AuditableEntity
 
     public int? CurrentScreen { get; set; }
 
-    public DateTime SavedAt { get; set; } = DateTime.UtcNow;
+    public DateTime SavedAt { get; set; } = DateTime.Now;
 
     // Navigation properties
     [ForeignKey(nameof(SessionId))]

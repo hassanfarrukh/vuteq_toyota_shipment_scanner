@@ -326,7 +326,7 @@ public class VuteqDbContext : DbContext
         // Seed default admin user
         var adminUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
         var adminPasswordHash = ComputeSha256Hash("cisg1234");
-        var seedDateTime = new DateTime(2025, 11, 25, 0, 0, 0, DateTimeKind.Utc);
+        var seedDateTime = new DateTime(2025, 11, 25, 0, 0, 0, DateTimeKind.Local);
 
         modelBuilder.Entity<UserMaster>().HasData(
             new UserMaster
@@ -392,12 +392,12 @@ public class VuteqDbContext : DbContext
         {
             if (entry.State == EntityState.Added)
             {
-                entry.Entity.CreatedAt = DateTime.UtcNow;
+                entry.Entity.CreatedAt = DateTime.Now;
                 // CreatedBy should be set by the service layer before saving
             }
             else if (entry.State == EntityState.Modified)
             {
-                entry.Entity.UpdatedAt = DateTime.UtcNow;
+                entry.Entity.UpdatedAt = DateTime.Now;
                 // UpdatedBy should be set by the service layer before saving
             }
         }

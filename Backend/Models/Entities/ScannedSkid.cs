@@ -31,7 +31,7 @@ public class ScannedSkid : AuditableEntity
     [MaxLength(200)]
     public string? Destination { get; set; }
 
-    public DateTime ScannedAt { get; set; } = DateTime.UtcNow;
+    public DateTime ScannedAt { get; set; } = DateTime.Now;
 
     // Navigation properties
     [ForeignKey(nameof(SessionId))]

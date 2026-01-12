@@ -489,7 +489,7 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
     {
         try
         {
-            skidScan.UpdatedAt = DateTime.UtcNow;
+            skidScan.UpdatedAt = DateTime.Now;
             _context.SkidScans.Update(skidScan);
             await _context.SaveChangesAsync();
             _logger.LogInformation("Updated SkidScan {ScanId} - ShipmentLoadSessionId: {SessionId}",

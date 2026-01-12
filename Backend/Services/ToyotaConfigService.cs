@@ -374,7 +374,7 @@ public class ToyotaConfigService : IToyotaConfigService
                     }
                     else if (expiresIn.HasValue)
                     {
-                        expiresAt = DateTime.UtcNow.AddSeconds(expiresIn.Value);
+                        expiresAt = DateTime.Now.AddSeconds(expiresIn.Value);
                         expiryDetails = $"Token expires in {expiresIn.Value} seconds (approximately {expiresAt:yyyy-MM-dd HH:mm:ss} UTC)";
                     }
 
@@ -393,7 +393,7 @@ public class ToyotaConfigService : IToyotaConfigService
                         Message = message,
                         TokenPreview = tokenPreview,
                         ExpiresIn = expiresIn,
-                        TestedAt = DateTime.UtcNow
+                        TestedAt = DateTime.Now
                     };
 
                     _logger.LogInformation("Toyota API connection test successful for config {ConfigId}. {Details}",
@@ -411,7 +411,7 @@ public class ToyotaConfigService : IToyotaConfigService
             {
                 Success = false,
                 Message = $"Failed to obtain OAuth token. Status: {response.StatusCode}. Response: {responseContent}",
-                TestedAt = DateTime.UtcNow
+                TestedAt = DateTime.Now
             };
 
             _logger.LogWarning("Toyota API connection test failed for config {ConfigId}. Status: {StatusCode}, Response: {Response}",
@@ -430,7 +430,7 @@ public class ToyotaConfigService : IToyotaConfigService
             {
                 Success = false,
                 Message = $"Connection test failed - HTTP error: {ex.Message}. Check TokenUrl and network connectivity.",
-                TestedAt = DateTime.UtcNow
+                TestedAt = DateTime.Now
             };
 
             return ApiResponse<ToyotaConnectionTestDto>.SuccessResponse(
@@ -446,7 +446,7 @@ public class ToyotaConfigService : IToyotaConfigService
             {
                 Success = false,
                 Message = $"Connection test timed out after 30 seconds. Check TokenUrl and network connectivity.",
-                TestedAt = DateTime.UtcNow
+                TestedAt = DateTime.Now
             };
 
             return ApiResponse<ToyotaConnectionTestDto>.SuccessResponse(
@@ -462,7 +462,7 @@ public class ToyotaConfigService : IToyotaConfigService
             {
                 Success = false,
                 Message = $"Connection test failed with exception: {ex.Message}",
-                TestedAt = DateTime.UtcNow
+                TestedAt = DateTime.Now
             };
 
             return ApiResponse<ToyotaConnectionTestDto>.SuccessResponse(

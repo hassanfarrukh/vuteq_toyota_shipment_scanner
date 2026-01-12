@@ -18,7 +18,7 @@ public abstract class AuditableEntity
     /// <summary>
     /// Timestamp when this record was created
     /// </summary>
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     /// <summary>
     /// User ID of the person who last modified this record

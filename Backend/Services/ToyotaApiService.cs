@@ -61,7 +61,7 @@ public class ToyotaApiService : IToyotaApiService
                     ? cached.Token.Substring(0, 20) + "..."
                     : cached.Token;
 
-                var isValid = cached.ExpiresAt > DateTime.UtcNow.AddMinutes(5);
+                var isValid = cached.ExpiresAt > DateTime.Now.AddMinutes(5);
 
                 return (tokenPreview, cached.ExpiresAt, isValid);
             }
@@ -81,7 +81,7 @@ public class ToyotaApiService : IToyotaApiService
         // Check cache first (thread-safe)
         lock (_cacheLock)
         {
-            if (_tokenCache.TryGetValue(environment, out var cached) && cached.ExpiresAt > DateTime.UtcNow.AddMinutes(5))
+            if (_tokenCache.TryGetValue(environment, out var cached) && cached.ExpiresAt > DateTime.Now.AddMinutes(5))
             {
                 _logger.LogInformation("Using cached Toyota API token for environment: {Environment}", environment);
                 return cached.Token;
@@ -142,13 +142,13 @@ public class ToyotaApiService : IToyotaApiService
                 }
                 else
                 {
-                    expiresAt = DateTime.UtcNow.AddSeconds(expiresIn);
+                    expiresAt = DateTime.Now.AddSeconds(expiresIn);
                     _logger.LogInformation("expires_on parsing failed, using expires_in calculation");
                 }
             }
             else
             {
-                expiresAt = DateTime.UtcNow.AddSeconds(expiresIn);
+                expiresAt = DateTime.Now.AddSeconds(expiresIn);
                 _logger.LogInformation("expires_on not found, using expires_in calculation");
             }
 

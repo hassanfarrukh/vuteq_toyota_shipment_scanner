@@ -77,7 +77,7 @@ public class DockMonitorService : IDockMonitorService
                 Shipments = locationFilteredShipments.OrderBy(s => s.PickupDateTime ?? DateTime.MaxValue).ToList(),
                 TotalOrders = locationFilteredShipments.Sum(s => s.Orders.Count),
                 Settings = settingsDto,
-                RefreshedAt = DateTime.UtcNow
+                RefreshedAt = DateTime.Now
             };
 
             _logger.LogInformation(
@@ -222,7 +222,7 @@ public class DockMonitorService : IDockMonitorService
         // Calculate time-based status
         if (order.PlannedPickup.HasValue)
         {
-            var now = DateTime.UtcNow;
+            var now = DateTime.Now;
             var plannedSkidBuild = order.PlannedPickup.Value.AddHours(-2);
             var minutesLate = (int)(now - plannedSkidBuild).TotalMinutes;
 
@@ -351,7 +351,7 @@ public class DockMonitorService : IDockMonitorService
                 DisplayMode = "FULL",
                 SelectedLocations = new List<string>(),
                 RefreshInterval = 300000,
-                ModifiedAt = DateTime.UtcNow
+                ModifiedAt = DateTime.Now
             };
         }
 
