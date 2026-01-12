@@ -8,6 +8,7 @@
  * Updated: 2025-11-24 - Fixed login redirect loop by adding isLoggingIn state to prevent race condition
  * Updated: 2025-11-24 - CRITICAL FIX: Removed isLoggingIn from useEffect dependencies to prevent page refresh on login error
  * Updated: 2025-11-25 - Added comprehensive file logging for debugging login flow
+ * Updated: 2025-01-12 - Fixed role mapping to give ADMIN priority over SUPERVISOR flag
  * Manages user authentication state and provides login/logout functionality
  */
 
@@ -39,15 +40,16 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Helper function to map backend role to frontend UserRole
-// Takes supervisor boolean as priority check - if true, role is SUPERVISOR
+// ADMIN takes priority over everything, then supervisor flag/role
 function mapBackendRoleToUserRole(backendRole: string, supervisor?: boolean): UserRole {
-  // If supervisor flag is explicitly true, return SUPERVISOR
-  if (supervisor === true) return 'SUPERVISOR';
-
   const roleUpper = backendRole.toUpperCase();
 
+  // ADMIN takes priority over everything
   if (roleUpper.includes('ADMIN')) return 'ADMIN';
-  if (roleUpper.includes('SUPERVISOR')) return 'SUPERVISOR';
+
+  // If supervisor flag is true OR role contains SUPERVISOR
+  if (supervisor === true || roleUpper.includes('SUPERVISOR')) return 'SUPERVISOR';
+
   return 'OPERATOR';
 }
 
