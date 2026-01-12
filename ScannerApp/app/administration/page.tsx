@@ -467,8 +467,19 @@ export default function AdministrationPage() {
     setSuccess(null);
     setIsSaving(true);
 
+    // Prepare settings with business logic:
+    // - Always send kanbanAlertOnDuplicate: true
+    // - If kanbanAllowDuplicates is true, send kanbanDuplicateWindowHours: 144
+    const settingsToSave = {
+      ...siteSettings,
+      kanbanAlertOnDuplicate: true,
+      kanbanDuplicateWindowHours: siteSettings.kanbanAllowDuplicates
+        ? 144
+        : siteSettings.kanbanDuplicateWindowHours
+    };
+
     // Send ALL settings, not just the current tab's fields
-    const result = await updateSiteSettings(siteSettings);
+    const result = await updateSiteSettings(settingsToSave);
 
     if (result.success) {
       setSuccess('Internal Kanban settings saved successfully!');
@@ -1894,50 +1905,30 @@ export default function AdministrationPage() {
                               </div>
                             </div>
 
-                            {/* Duplicate Window Hours */}
-                            <div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <label className="text-sm font-medium text-gray-700">
-                                  Duplicate Window Hours
-                                </label>
-                                <div className="relative group">
-                                  <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
-                                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
-                                    Time window in hours to check for duplicate scans
+                            {/* Duplicate Window Hours - Only show when Allow Duplicates is FALSE */}
+                            {!siteSettings.kanbanAllowDuplicates && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <label className="text-sm font-medium text-gray-700">
+                                    Duplicate Window Hours
+                                  </label>
+                                  <div className="relative group">
+                                    <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                      Time window in hours to check for duplicate scans
+                                    </div>
                                   </div>
                                 </div>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={siteSettings.kanbanDuplicateWindowHours}
+                                  onChange={(e) => setSiteSettings({ ...siteSettings, kanbanDuplicateWindowHours: parseInt(e.target.value) || 24 })}
+                                  placeholder="Enter hours"
+                                  className="w-full"
+                                />
                               </div>
-                              <Input
-                                type="number"
-                                min="1"
-                                value={siteSettings.kanbanDuplicateWindowHours}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, kanbanDuplicateWindowHours: parseInt(e.target.value) || 24 })}
-                                placeholder="Enter hours"
-                                className="w-full"
-                              />
-                            </div>
-
-                            {/* Alert on Duplicate */}
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                id="kanbanAlertOnDuplicate"
-                                checked={siteSettings.kanbanAlertOnDuplicate}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, kanbanAlertOnDuplicate: e.target.checked })}
-                                className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
-                              />
-                              <div className="flex items-center gap-2">
-                                <label htmlFor="kanbanAlertOnDuplicate" className="text-sm font-medium text-gray-700">
-                                  Alert on Duplicate
-                                </label>
-                                <div className="relative group">
-                                  <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
-                                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
-                                    When enabled, shows an alert notification when a duplicate scan is detected
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
+                            )}
                           </div>
 
                           {/* Save Button */}
