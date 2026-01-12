@@ -74,6 +74,12 @@
  *               Full CRUD operations: create, read, update, delete, and test connection functionality. (Hassan)
  * Updated: 2026-01-03 - Added Site Settings tab with 3 sub-tabs (Site Settings, Dock Monitor, Internal Kanban) for
  *               centralized site-wide configuration management. (Hassan)
+ * Updated: 2026-01-13 - REVERTED Site Settings layout to original 2-column grid design. Changed from flex-wrap to
+ *               grid grid-cols-2 layout with max-w-[50%] constraint for narrower, closer columns. Site Settings tab:
+ *               Plant Location (full width), Plant Opening/Closing Times (2 cols), Order Archive Days (full width),
+ *               Enable PreShipment Scan moved to END (full width). Dock Monitor tab: Behind/Critical Thresholds (2 cols),
+ *               Display Mode/Refresh Interval (2 cols), Order Lookback Hours (full width). Internal Kanban tab: Added
+ *               max-w-[50%] constraint for consistency. (Hassan)
  *
  * Admin-only page with 8 tabs:
  * 1. Office Management - Manage office locations (CONNECTED TO API)
@@ -1623,16 +1629,16 @@ export default function AdministrationPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 gap-6">
-                            {/* Plant Location */}
-                            <div>
+                          <div className="grid grid-cols-2 gap-6 max-w-[50%]">
+                            {/* Plant Location - Spans 2 columns */}
+                            <div className="col-span-2">
                               <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Plant Location
                               </label>
                               <select
                                 value={siteSettings.plantLocation}
                                 onChange={(e) => setSiteSettings({ ...siteSettings, plantLocation: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#253262] focus:border-transparent"
+                                className="w-64 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#253262] focus:border-transparent"
                               >
                                 <option value="">Select Plant Location</option>
                                 {LOCATIONS.map((location) => (
@@ -1641,48 +1647,34 @@ export default function AdministrationPage() {
                               </select>
                             </div>
 
-                            {/* Plant Opening and Closing Time */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Plant Opening Time
-                                </label>
-                                <Input
-                                  type="time"
-                                  value={siteSettings.plantOpeningTime}
-                                  onChange={(e) => setSiteSettings({ ...siteSettings, plantOpeningTime: e.target.value })}
-                                  className="w-full"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Plant Closing Time
-                                </label>
-                                <Input
-                                  type="time"
-                                  value={siteSettings.plantClosingTime}
-                                  onChange={(e) => setSiteSettings({ ...siteSettings, plantClosingTime: e.target.value })}
-                                  className="w-full"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Enable PreShipment Scan */}
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                id="enablePreShipmentScan"
-                                checked={siteSettings.enablePreShipmentScan}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, enablePreShipmentScan: e.target.checked })}
-                                className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
-                              />
-                              <label htmlFor="enablePreShipmentScan" className="text-sm font-medium text-gray-700">
-                                Enable PreShipment Scan
-                              </label>
-                            </div>
-
-                            {/* Order Archive Days */}
+                            {/* Plant Opening Time */}
                             <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Plant Opening Time
+                              </label>
+                              <Input
+                                type="time"
+                                value={siteSettings.plantOpeningTime}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, plantOpeningTime: e.target.value })}
+                                className="w-40"
+                              />
+                            </div>
+
+                            {/* Plant Closing Time */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Plant Closing Time
+                              </label>
+                              <Input
+                                type="time"
+                                value={siteSettings.plantClosingTime}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, plantClosingTime: e.target.value })}
+                                className="w-40"
+                              />
+                            </div>
+
+                            {/* Order Archive Days - Spans 2 columns */}
+                            <div className="col-span-2">
                               <label htmlFor="orderArchiveDays" className="block text-sm font-medium text-gray-700 mb-1">
                                 Order Archive Days
                                 <span className="ml-1 inline-block relative group">
@@ -1696,11 +1688,31 @@ export default function AdministrationPage() {
                                 type="number"
                                 id="orderArchiveDays"
                                 value={siteSettings.orderArchiveDays}
-                                onChange={(e) => setSiteSettings({ ...siteSettings, orderArchiveDays: parseInt(e.target.value) || 14 })}
+                                onChange={(e) => {
+                                  const rawValue = e.target.value;
+                                  const parsed = rawValue === '' ? '' : parseInt(rawValue);
+                                  if (rawValue === '' || (!isNaN(parsed as number) && (parsed as number) >= 1 && (parsed as number) <= 365)) {
+                                    setSiteSettings({ ...siteSettings, orderArchiveDays: parsed as any });
+                                  }
+                                }}
                                 min={1}
                                 max={365}
-                                className="w-full"
+                                className="w-32"
                               />
+                            </div>
+
+                            {/* Enable PreShipment Scan - Moved to end, spans 2 columns */}
+                            <div className="flex items-center gap-3 col-span-2">
+                              <input
+                                type="checkbox"
+                                id="enablePreShipmentScan"
+                                checked={siteSettings.enablePreShipmentScan}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, enablePreShipmentScan: e.target.checked })}
+                                className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
+                              />
+                              <label htmlFor="enablePreShipmentScan" className="text-sm font-medium text-gray-700">
+                                Enable PreShipment Scan
+                              </label>
                             </div>
                           </div>
 
@@ -1734,7 +1746,7 @@ export default function AdministrationPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="grid grid-cols-2 gap-6 max-w-[50%]">
                             {/* Behind Threshold */}
                             <div>
                               <div className="flex items-center gap-2 mb-2">
@@ -1754,7 +1766,7 @@ export default function AdministrationPage() {
                                 value={siteSettings.dockBehindThreshold}
                                 onChange={(e) => setSiteSettings({ ...siteSettings, dockBehindThreshold: parseInt(e.target.value) || 0 })}
                                 placeholder="Enter minutes"
-                                className="w-full"
+                                className="w-32"
                               />
                             </div>
 
@@ -1777,7 +1789,7 @@ export default function AdministrationPage() {
                                 value={siteSettings.dockCriticalThreshold}
                                 onChange={(e) => setSiteSettings({ ...siteSettings, dockCriticalThreshold: parseInt(e.target.value) || 0 })}
                                 placeholder="Enter minutes"
-                                className="w-full"
+                                className="w-32"
                               />
                             </div>
 
@@ -1797,7 +1809,7 @@ export default function AdministrationPage() {
                               <select
                                 value={siteSettings.dockDisplayMode}
                                 onChange={(e) => setSiteSettings({ ...siteSettings, dockDisplayMode: e.target.value as 'FULL' | 'COMPACT' })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#253262] focus:border-transparent"
+                                className="w-48 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#253262] focus:border-transparent"
                               >
                                 <option value="FULL">Full</option>
                                 <option value="COMPACT">Compact</option>
@@ -1824,32 +1836,38 @@ export default function AdministrationPage() {
                                 value={siteSettings.dockRefreshInterval / 60000}
                                 onChange={(e) => setSiteSettings({ ...siteSettings, dockRefreshInterval: (parseInt(e.target.value) || 0.5) * 60000 })}
                                 placeholder="Enter minutes"
-                                className="w-full"
+                                className="w-32"
                               />
                             </div>
-                          </div>
 
-                          {/* Order Lookback Hours - Full width */}
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <label className="text-sm font-medium text-gray-700">
-                                Order Lookback Hours
-                              </label>
-                              <div className="relative group">
-                                <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
-                                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
-                                  How many hours back to search for orders in the dock monitor
+                            {/* Order Lookback Hours - Spans 2 columns */}
+                            <div className="col-span-2">
+                              <div className="flex items-center gap-2 mb-2">
+                                <label className="text-sm font-medium text-gray-700">
+                                  Order Lookback Hours
+                                </label>
+                                <div className="relative group">
+                                  <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                    How many hours back to search for orders in the dock monitor
+                                  </div>
                                 </div>
                               </div>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={siteSettings.dockOrderLookbackHours}
+                                onChange={(e) => {
+                                  const rawValue = e.target.value;
+                                  const parsed = rawValue === '' ? '' : parseInt(rawValue);
+                                  if (rawValue === '' || (!isNaN(parsed as number) && (parsed as number) >= 1)) {
+                                    setSiteSettings({ ...siteSettings, dockOrderLookbackHours: parsed as any });
+                                  }
+                                }}
+                                placeholder="Enter hours"
+                                className="w-32"
+                              />
                             </div>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={siteSettings.dockOrderLookbackHours}
-                              onChange={(e) => setSiteSettings({ ...siteSettings, dockOrderLookbackHours: parseInt(e.target.value) || 24 })}
-                              placeholder="Enter hours"
-                              className="w-full"
-                            />
                           </div>
 
                           {/* Save Button */}
@@ -1882,7 +1900,7 @@ export default function AdministrationPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 gap-6">
+                          <div className="grid grid-cols-1 gap-6 max-w-[50%]">
                             {/* Allow Duplicates */}
                             <div className="flex items-center gap-3">
                               <input
@@ -1923,9 +1941,15 @@ export default function AdministrationPage() {
                                   type="number"
                                   min="1"
                                   value={siteSettings.kanbanDuplicateWindowHours}
-                                  onChange={(e) => setSiteSettings({ ...siteSettings, kanbanDuplicateWindowHours: parseInt(e.target.value) || 24 })}
+                                  onChange={(e) => {
+                                    const rawValue = e.target.value;
+                                    const parsed = rawValue === '' ? '' : parseInt(rawValue);
+                                    if (rawValue === '' || (!isNaN(parsed as number) && (parsed as number) >= 1)) {
+                                      setSiteSettings({ ...siteSettings, kanbanDuplicateWindowHours: parsed as any });
+                                    }
+                                  }}
                                   placeholder="Enter hours"
-                                  className="w-full"
+                                  className="w-32"
                                 />
                               </div>
                             )}
