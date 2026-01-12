@@ -32,7 +32,7 @@ function getApiBaseUrl(): string {
     // Development mode: Frontend running on port 3000
     // Backend is on separate port 5000
     if (port === '3000') {
-      return 'http://localhost:5000';
+      return `http://${hostname}:5000`;
     }
 
     // Production mode (IIS): Port 80 (empty string) or 443
