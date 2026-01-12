@@ -1,6 +1,7 @@
 // Author: Hassan
 // Date: 2025-12-08
 // Updated: 2025-12-24 - Added GetSkidBuildExceptionsByOrderIdAsync to support skid build exceptions in shipment load
+// Updated: 2026-01-12 - Implemented GetAllOrdersByRouteAndPickupAsync to filter orders by BOTH route AND PlannedPickup datetime
 // Description: Repository for Shipment Load operations - handles data access using EF Core
 
 using Backend.Data;
@@ -26,6 +27,7 @@ public interface IShipmentLoadRepository
     // Order operations
     Task<List<Order>> GetOrdersByRouteAsync(string routeNumber);
     Task<List<Order>> GetAllOrdersByRouteAsync(string routeNumber); // All orders regardless of status
+    Task<List<Order>> GetAllOrdersByRouteAndPickupAsync(string routeNumber, DateTime pickupDateTime); // Filter by Route AND PlannedPickup
     Task<Order?> GetOrderByNumberAndDockAsync(string orderNumber, string dockCode);
     Task<int> GetSkidScansCountForOrderAsync(Guid orderId);
     Task UpdateOrdersAsync(List<Order> orders);
@@ -130,6 +132,44 @@ public class ShipmentLoadRepository : IShipmentLoadRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving all orders for route: {RouteNumber}", routeNumber);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get ALL orders for a route AND specific PlannedPickup datetime (regardless of status)
+    /// CRITICAL: Filters by BOTH route AND PlannedPickup to avoid matching orders from different days
+    /// Normalizes route comparison by removing hyphens (e.g., JAAJ17 matches JAAJ-17)
+    /// </summary>
+    public async Task<List<Order>> GetAllOrdersByRouteAndPickupAsync(string routeNumber, DateTime pickupDateTime)
+    {
+        try
+        {
+            // Normalize input route by removing hyphens
+            var normalizedRoute = routeNumber.Replace("-", "");
+
+            // Also try with hyphen inserted before last 2 digits (e.g., JAAJ17 -> JAAJ-17)
+            var routeWithHyphen = normalizedRoute.Length > 2
+                ? normalizedRoute.Insert(normalizedRoute.Length - 2, "-")
+                : normalizedRoute;
+
+            _logger.LogInformation(
+                "GetAllOrdersByRouteAndPickupAsync - Route: {RouteNumber}, PickupDateTime: {PickupDateTime}",
+                routeNumber, pickupDateTime);
+
+            return await _context.Orders
+                .Where(o =>
+                    (o.PlannedRoute == normalizedRoute ||
+                     o.PlannedRoute == routeWithHyphen ||
+                     o.PlannedRoute == routeNumber) &&
+                    o.PlannedPickup == pickupDateTime)
+                .OrderBy(o => o.RealOrderNumber)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving orders for route {RouteNumber} with PlannedPickup {PickupDateTime}",
+                routeNumber, pickupDateTime);
             throw;
         }
     }

@@ -223,41 +223,48 @@ export default function ShipmentLoadV2Page() {
 
   /**
    * Parse Pickup Route QR Code
-   * Fixed-Position Format (54-byte Driver Checksheet - Toyota spec):
-   * Example: "26MTMFB05474   2025121134     JAAJ17Load20251211181000"
+   * Fixed-Position Format (52 or 54-byte Driver Checksheet - Toyota spec):
+   *
+   * 54-byte Example: "26MTMFB05474   2025121134     JAAJ17Load20251211181000"
+   * 52-byte Example: "02TMIHL02806   2026010907     IDZE07Load202601091133"
    *
    * Position Map (1-indexed in spec, 0-indexed in JavaScript):
-   * - Pos 0-5: Plant Code (26MTM)
-   * - Pos 5-7: Dock Code (FB)
-   * - Pos 7-12: Supplier Code (05474)
-   * - Pos 12-15: Supplier Ship Dock (spaces)
-   * - Pos 15-27: Order Number (2025121134  ) - 12 chars with trailing spaces
-   * - Pos 27-36: Route Code (JAAJ17   ) - 9 chars with trailing spaces
-   * - Pos 36-40: Filler ("Load")
-   * - Pos 40-54: Pickup DateTime (20251211181000) - YYYYMMDDHHMMSS (14 chars)
+   * - Pos 0-5: Plant Code (5 chars)
+   * - Pos 5-7: Dock Code (2 chars)
+   * - Pos 7-12: Supplier Code (5 chars)
+   * - Pos 12-15: Supplier Ship Dock (3 chars, often spaces)
+   * - Pos 15-25: Order Number (10 chars)
+   * - Pos 25-30: Spaces (5 chars)
+   * - Pos 30-36: Route Code (6 chars)
+   * - Pos 36-40: Filler (4 chars, typically "Load")
+   * - Pos 40-52: Pickup DateTime (12 chars) - YYYYMMDDHHMM (no seconds)
+   *   OR
+   * - Pos 40-54: Pickup DateTime (14 chars) - YYYYMMDDHHMMSS (with seconds)
    *
    * Author: Hassan, 2025-11-05
    * Updated: 2025-12-17 - Fixed to use correct 54-byte Driver Checksheet format
+   * Updated: 2026-01-12 - Support both 52-char (no seconds) and 54-char (with seconds) formats
    */
   const parsePickupRouteQR = (qrValue: string): PickupRouteData | null => {
     try {
-      // Expected length: 54 characters
-      if (qrValue.length < 54) {
-        console.error(`Invalid pickup route QR format. Expected 54-character format, got ${qrValue.length} characters.`);
+      // Expected length: 52 or 54 characters
+      if (qrValue.length !== 52 && qrValue.length !== 54) {
+        console.error(`Invalid pickup route QR format. Expected 52 or 54 characters, got ${qrValue.length} characters.`);
         return null;
       }
 
-      // Extract fields using 0-indexed substring (Toyota spec is 1-indexed)
-      const plantCode = qrValue.substring(0, 5).trim();           // Pos 0-5: 26MTM
-      const dockCode = qrValue.substring(5, 7).trim();            // Pos 5-7: FB
-      const supplierCode = qrValue.substring(7, 12).trim();       // Pos 7-12: 05474
-      const supplierShipDock = qrValue.substring(12, 15).trim();  // Pos 12-15: (spaces/unused)
-      const orderNumber = qrValue.substring(15, 27).trim();       // Pos 15-27: 2025121134 (trim spaces)
-      const routeCode = qrValue.substring(27, 36).trim();         // Pos 27-36: JAAJ17 (trim spaces)
-      const filler = qrValue.substring(36, 40);                   // Pos 36-40: "Load"
-      const pickupDateTime = qrValue.substring(40, 54);           // Pos 40-54: 20251211181000 (YYYYMMDDHHMMSS)
+      // Extract fields using 0-indexed substring
+      const plantCode = qrValue.substring(0, 5).trim();           // Pos 0-5: Plant Code (5 chars)
+      const dockCode = qrValue.substring(5, 7).trim();            // Pos 5-7: Dock Code (2 chars)
+      const supplierCode = qrValue.substring(7, 12).trim();       // Pos 7-12: Supplier Code (5 chars)
+      const supplierShipDock = qrValue.substring(12, 15).trim();  // Pos 12-15: Supplier Ship Dock (3 chars)
+      const orderNumber = qrValue.substring(15, 25).trim();       // Pos 15-25: Order Number (10 chars)
+      const spaces = qrValue.substring(25, 30);                   // Pos 25-30: Spaces (5 chars)
+      const routeCode = qrValue.substring(30, 36).trim();         // Pos 30-36: Route Code (6 chars)
+      const filler = qrValue.substring(36, 40);                   // Pos 36-40: Filler (4 chars, "Load")
+      const pickupDateTime = qrValue.substring(40);               // Pos 40-end: DateTime (12 or 14 chars)
 
-      console.log('=== PICKUP ROUTE QR PARSING (54-BYTE FORMAT) ===');
+      console.log('=== PICKUP ROUTE QR PARSING ===');
       console.log('Raw input:', qrValue);
       console.log('Length:', qrValue.length);
       console.log('Extracted fields:');
@@ -265,28 +272,36 @@ export default function ShipmentLoadV2Page() {
       console.log('  dockCode (5-7):', `"${dockCode}"`);
       console.log('  supplierCode (7-12):', `"${supplierCode}"`);
       console.log('  supplierShipDock (12-15):', `"${supplierShipDock}"`);
-      console.log('  orderNumber (15-27):', `"${orderNumber}"`);
-      console.log('  routeCode (27-36):', `"${routeCode}"`);
+      console.log('  orderNumber (15-25):', `"${orderNumber}"`);
+      console.log('  spaces (25-30):', `"${spaces}"`);
+      console.log('  routeCode (30-36):', `"${routeCode}"`);
       console.log('  filler (36-40):', `"${filler}"`);
-      console.log('  pickupDateTime (40-54):', `"${pickupDateTime}"`);
+      console.log('  pickupDateTime (40-end):', `"${pickupDateTime}"`, `(${pickupDateTime.length} chars)`);
 
-      // Convert pickup datetime (YYYYMMDDHHMMSS) to ISO 8601 format and separate date/time
+      // Convert pickup datetime to ISO 8601 format and separate date/time
+      // Handle both 12-char (YYYYMMDDHHMM) and 14-char (YYYYMMDDHHMMSS) formats
       let pickupDateTimeISO = '';
       let pickupDate = '';
       let pickupTime = '';
-      if (pickupDateTime.length === 14) {
+
+      if (pickupDateTime.length === 12 || pickupDateTime.length === 14) {
         const year = pickupDateTime.substring(0, 4);
         const month = pickupDateTime.substring(4, 6);
         const day = pickupDateTime.substring(6, 8);
         const hour = pickupDateTime.substring(8, 10);
         const minute = pickupDateTime.substring(10, 12);
-        const second = pickupDateTime.substring(12, 14);
+        // If 12 chars (no seconds), default to "00". If 14 chars, extract seconds.
+        const second = pickupDateTime.length === 14 ? pickupDateTime.substring(12, 14) : '00';
+
         pickupDateTimeISO = `${year}-${month}-${day}T${hour}:${minute}:${second}`;
         pickupDate = `${year}-${month}-${day}`;
         pickupTime = `${hour}:${minute}`;
         console.log('  Parsed Pickup DateTime (ISO):', pickupDateTimeISO);
         console.log('  Parsed Pickup Date:', pickupDate);
         console.log('  Parsed Pickup Time:', pickupTime);
+      } else {
+        console.error('Invalid pickup datetime length:', pickupDateTime.length);
+        return null;
       }
 
       // Validate required fields
@@ -331,7 +346,7 @@ export default function ShipmentLoadV2Page() {
     const parsedData = parsePickupRouteQR(result.scannedValue);
 
     if (!parsedData) {
-      setError('Invalid Pickup Route QR Code. Please scan the correct barcode.');
+      setError('Invalid Driver Checksheet Barcode. Please scan the correct barcode.');
       return;
     }
 
@@ -443,7 +458,7 @@ export default function ShipmentLoadV2Page() {
    */
   const handlePickupRouteContinue = async () => {
     if (!pickupRouteData) {
-      setError('Please scan a valid pickup route QR code first');
+      setError('Please scan a valid driver checksheet barcode first');
       return;
     }
 
@@ -468,7 +483,9 @@ export default function ShipmentLoadV2Page() {
       });
 
       if (!sessionResponse.success || !sessionResponse.data) {
-        setError(sessionResponse.message || 'Failed to start session');
+        // Display the actual error message from backend (includes detailed order status info)
+        const errorMsg = sessionResponse.error || sessionResponse.message || 'Failed to start session';
+        setError(errorMsg);
         setLoading(false);
         return;
       }
@@ -585,7 +602,9 @@ export default function ShipmentLoadV2Page() {
       setError(null);
     } catch (err) {
       console.error('Error starting session:', err);
-      setError('Failed to start session. Please try again.');
+      // Extract meaningful error message from exception
+      const errorMsg = err instanceof Error ? err.message : 'Failed to start session. Please try again.';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -619,7 +638,7 @@ export default function ShipmentLoadV2Page() {
 
     // Check sessionId exists
     if (!sessionId) {
-      setError('Session not found. Please scan the pickup route QR again.');
+      setError('Session not found. Please scan the driver checksheet barcode again.');
       return;
     }
 
@@ -772,7 +791,7 @@ export default function ShipmentLoadV2Page() {
 
     // Validate sessionId exists
     if (!sessionId) {
-      setError('Session not found. Please scan the pickup route QR again.');
+      setError('Session not found. Please scan the driver checksheet barcode again.');
       setLoading(false);
       return;
     }
@@ -1221,7 +1240,7 @@ export default function ShipmentLoadV2Page() {
             </Alert>
           )}
 
-          {/* SCREEN 1: Scan Pickup Route QR */}
+          {/* SCREEN 1: Scan Driver Checksheet Barcode */}
           {currentScreen === 1 && (
             <Card className="bg-[#FCFCFC]">
               <CardContent className="p-3 space-y-3">
@@ -1233,7 +1252,7 @@ export default function ShipmentLoadV2Page() {
                       Shipment Load
                     </h1>
                     <p className="text-sm text-gray-600">
-                      Scan the Pickup Route QR code to begin
+                      Scan the Driver Checksheet Barcode to begin
                     </p>
                   </div>
                 </div>
@@ -1242,8 +1261,8 @@ export default function ShipmentLoadV2Page() {
                 {!pickupRouteData && (
                   <Scanner
                     onScan={handlePickupRouteScan}
-                    label="Scan Pickup Route QR Code"
-                    placeholder="Scan Pickup Route QR Code"
+                    label="Scan Driver Checksheet Barcode"
+                    placeholder="Scan Driver Checksheet Barcode"
                     disabled={loading}
                   />
                 )}
@@ -1254,7 +1273,7 @@ export default function ShipmentLoadV2Page() {
                     <div className="p-3 bg-success-50 border-2 border-success-200 rounded-lg">
                       <div className="flex items-center gap-2 mb-2">
                         <i className="fa fa-circle-check text-success-600 text-lg"></i>
-                        <h3 className="font-semibold text-sm text-success-700">Pickup Route Scanned</h3>
+                        <h3 className="font-semibold text-sm text-success-700">Driver Checksheet Scanned</h3>
                       </div>
 
                       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">

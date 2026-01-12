@@ -110,14 +110,15 @@ public class ShipmentLoadService : IShipmentLoadService
             }
 
             // ===== VALIDATE ALL ORDERS ON ROUTE HAVE COMPLETED SKID BUILD =====
-            // Get ALL orders on this route (regardless of status) to check if any are not ready
-            var allOrdersOnRoute = await _repository.GetAllOrdersByRouteAsync(request.RouteNumber);
+            // Get ALL orders on this route AND PlannedPickup datetime (regardless of status) to check if any are not ready
+            // CRITICAL FIX: Filter by BOTH Route AND PlannedPickup to avoid matching orders from different days
+            var allOrdersOnRoute = await _repository.GetAllOrdersByRouteAndPickupAsync(request.RouteNumber, request.PickupDateTime);
 
             if (allOrdersOnRoute.Count == 0)
             {
                 return ApiResponse<SessionResponseDto>.ErrorResponse(
                     "No orders found",
-                    $"No orders found for route '{request.RouteNumber}'. Please verify the route number.");
+                    $"No orders found for route '{request.RouteNumber}' with pickup date '{request.PickupDateTime:yyyy-MM-dd HH:mm}'. Please verify the route number and pickup date.");
             }
 
             // Check for orders that haven't completed skid build
