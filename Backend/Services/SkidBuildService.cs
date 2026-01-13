@@ -3,6 +3,7 @@
 // Updated: 2025-12-13 - Updated to return ScanDetails instead of InternalKanbans
 // Updated: 2025-12-14 - Integrated Toyota API submission in CompleteSessionAsync
 // Updated: 2025-12-22 - Fixed Order.Status to set SkidBuildError when Toyota API fails
+// Updated: 2025-01-13 - Added EXL (excluded) parts support - skips internal kanban validation for excluded parts
 // Description: Service for Skid Build operations - handles business logic and Toyota API integration
 
 using Backend.Models;
@@ -60,6 +61,7 @@ public class SkidBuildService : ISkidBuildService
     private readonly IToyotaValidationService _toyotaValidationService;
     private readonly IToyotaApiService _toyotaApiService;
     private readonly ISiteSettingsRepository _siteSettingsRepository;
+    private readonly IInternalKanbanExclusionRepository _exclusionRepository;
     private readonly ILogger<SkidBuildService> _logger;
 
     // System user ID for operations when user is not authenticated
@@ -70,12 +72,14 @@ public class SkidBuildService : ISkidBuildService
         IToyotaValidationService toyotaValidationService,
         IToyotaApiService toyotaApiService,
         ISiteSettingsRepository siteSettingsRepository,
+        IInternalKanbanExclusionRepository exclusionRepository,
         ILogger<SkidBuildService> logger)
     {
         _skidBuildRepository = skidBuildRepository;
         _toyotaValidationService = toyotaValidationService;
         _toyotaApiService = toyotaApiService;
         _siteSettingsRepository = siteSettingsRepository;
+        _exclusionRepository = exclusionRepository;
         _logger = logger;
     }
 
@@ -225,6 +229,10 @@ public class SkidBuildService : ISkidBuildService
                 var scannedCount = await _skidBuildRepository.GetScannedCountByPlannedItemAsync(item.PlannedItemId);
                 var scanDetails = await _skidBuildRepository.GetScanDetailsByPlannedItemAsync(item.PlannedItemId);
 
+                // Check if part is excluded from internal kanban validation
+                var normalizedPartNumber = NormalizePartNumber(item.PartNumber);
+                var isExcluded = await _exclusionRepository.IsPartExcludedAsync(normalizedPartNumber);
+
                 plannedItemDtos.Add(new SkidBuildPlannedItemDto
                 {
                     PlannedItemId = item.PlannedItemId,
@@ -235,7 +243,8 @@ public class SkidBuildService : ISkidBuildService
                     ManifestNo = item.ManifestNo,
                     PalletizationCode = item.PalletizationCode,
                     ScannedCount = scannedCount,
-                    ScanDetails = scanDetails
+                    ScanDetails = scanDetails,
+                    InternalKanbanRequired = !isExcluded  // false if excluded, true if not
                 });
             }
 
@@ -286,6 +295,10 @@ public class SkidBuildService : ISkidBuildService
                 var scannedCount = await _skidBuildRepository.GetScannedCountByPlannedItemAsync(item.PlannedItemId);
                 var scanDetails = await _skidBuildRepository.GetScanDetailsByPlannedItemAsync(item.PlannedItemId);
 
+                // Check if part is excluded from internal kanban validation
+                var normalizedPartNumber = NormalizePartNumber(item.PartNumber);
+                var isExcluded = await _exclusionRepository.IsPartExcludedAsync(normalizedPartNumber);
+
                 plannedItemDtos.Add(new SkidBuildPlannedItemDto
                 {
                     PlannedItemId = item.PlannedItemId,
@@ -296,7 +309,8 @@ public class SkidBuildService : ISkidBuildService
                     ManifestNo = item.ManifestNo,
                     PalletizationCode = item.PalletizationCode,
                     ScannedCount = scannedCount,
-                    ScanDetails = scanDetails
+                    ScanDetails = scanDetails,
+                    InternalKanbanRequired = !isExcluded  // false if excluded, true if not
                 });
             }
 
@@ -493,9 +507,22 @@ public class SkidBuildService : ISkidBuildService
             }
 
             // ===== ISSUE #2 & #4: INTERNAL KANBAN PARSING AND VALIDATION =====
+            // ===== EXL HANDLING: Check if this is an excluded part =====
             ParsedInternalKanban? parsedKanban = null;
+            bool isExcludedPart = string.Equals(request.InternalKanban, "EXL", StringComparison.OrdinalIgnoreCase);
 
-            if (!string.IsNullOrWhiteSpace(request.InternalKanban))
+            if (isExcludedPart)
+            {
+                _logger.LogInformation("Excluded part scan: PlannedItemId={PlannedItemId}, InternalKanban=EXL",
+                    request.PlannedItemId);
+
+                // Skip all internal kanban validations for excluded parts
+                // - No parsing needed
+                // - No part number validation
+                // - No kanban code validation
+                // - No serial duplicate check
+            }
+            else if (!string.IsNullOrWhiteSpace(request.InternalKanban))
             {
                 // Issue #2: Parse Internal Kanban using fixed-position format
                 parsedKanban = ParseInternalKanban(request.InternalKanban);

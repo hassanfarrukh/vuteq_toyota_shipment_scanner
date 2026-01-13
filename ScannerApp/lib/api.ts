@@ -550,6 +550,7 @@ export interface SkidBuildPlannedItem {
   externalOrderId: number;
   scannedCount: number;
   scanDetails: ScanDetailDto[];
+  internalKanbanRequired?: boolean; // false if part is excluded, true/undefined otherwise
 }
 
 export interface SkidBuildOrder {

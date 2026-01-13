@@ -225,6 +225,7 @@ interface PlannedItem {
     internalKanban: string | null;
     palletizationCode: string | null;
   }>;
+  internalKanbanRequired?: boolean;  // false if part is excluded, true/undefined otherwise
 }
 
 interface ScannedItem {
@@ -838,6 +839,7 @@ export default function SkidBuildV2Page() {
               palletizationCode: item.palletizationCode,
               internalKanbans: (item as any).internalKanbans || [],
               scanDetails: item.scanDetails || [],  // MAP scanDetails from API
+              internalKanbanRequired: item.internalKanbanRequired ?? true, // Default to true if not specified
             });
           });
         });
@@ -993,13 +995,116 @@ export default function SkidBuildV2Page() {
       return;
     }
 
-    // Kanban VALIDATED - Store and open Internal Kanban modal
+    // Check if internal kanban is required for this part
+    if (matchingPlanned.internalKanbanRequired === false) {
+      // EXCLUDED PART - Skip popup, call API directly with "EXL"
+      handleExcludedPartScan(parsed, matchingPlanned);
+      return;
+    }
+
+    // NORMAL PART - Show Internal Kanban popup
     setPendingToyotaKanban(parsed);
     setShowInternalKanbanModal(true);
     setInternalKanbanInput(''); // Clear previous input
     setInternalKanbanError(null); // Clear any previous error
     setSuccess(`✓ Validated: ${parsed.partNumber} - ${parsed.description}`);
     console.log('Toyota Kanban validated:', parsed, 'Matched planned:', matchingPlanned);
+  };
+
+  /**
+   * Handle scan for excluded parts (no internal kanban required)
+   * Calls API directly with "EXL" as internal kanban value
+   * Author: Hassan, Date: 2025-01-13
+   */
+  const handleExcludedPartScan = async (
+    toyotaKanban: ParsedToyotaKanban,
+    matchingPlanned: PlannedItem
+  ) => {
+    if (!currentSkidId) {
+      setError('Please scan a manifest QR first');
+      return;
+    }
+
+    if (!user?.id) {
+      setError('User not authenticated. Please log in again.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Get current skid info
+      const currentSkid = skidGroups.find(g => g.skidId === currentSkidId);
+      const palletizationCode = currentSkid?.palletizationCode || '';
+
+      // Calculate box number - use box number from Toyota Kanban
+      const boxNumber = parseInt(toyotaKanban.boxNumber) || 1;
+
+      // Parse skid info
+      const skidNumber = currentSkidId.replace(/[AB]$/, '').replace(/^[A-Z0-9]+-/, '');
+      const skidSide = currentSkidId.match(/[AB]$/)?.[0] || 'A';
+      const rawSkidId = currentSkidId.split('-').pop() || currentSkidId;
+
+      // Call API with "EXL" as internal kanban
+      const scanResponse = await recordSkidBuildScan(
+        sessionId!,
+        matchingPlanned.plannedItemId!,
+        skidNumber,
+        skidSide,
+        rawSkidId,
+        boxNumber,
+        toyotaKanban.lineSideAddress || 'N/A',
+        palletizationCode,
+        "EXL",  // Excluded - no internal kanban
+        user.id
+      );
+
+      if (scanResponse.success && scanResponse.data) {
+        // Create scanned item for UI
+        const scannedItem: ScannedItem = {
+          id: scanResponse.data.scanId,
+          skidId: currentSkidId,
+          toyotaKanban: toyotaKanban.rawValue,
+          internalKanban: "EXL",
+          serialNumber: "EXL",
+          partNumber: toyotaKanban.partNumber,
+          quantity: parseInt(toyotaKanban.quantity) || 0,
+          timestamp: new Date().toISOString(),
+          description: toyotaKanban.description,
+          boxNumber: boxNumber,
+          kanbanNumber: toyotaKanban.kanbanNumber,
+        };
+
+        // Add to scanned array in skidGroups
+        setSkidGroups(prev => {
+          return prev.map(skid => {
+            if (skid.skidId === currentSkidId) {
+              return {
+                ...skid,
+                scanned: [...skid.scanned, scannedItem]
+              };
+            }
+            return skid;
+          });
+        });
+
+        setSuccess(`✓ Added (Excluded): ${toyotaKanban.partNumber} - ${toyotaKanban.description} [Box #${boxNumber}]`);
+
+        console.log('Excluded part scan completed', {
+          partNumber: toyotaKanban.partNumber,
+          boxNumber,
+          skidId: currentSkidId
+        });
+      } else {
+        setError(scanResponse.error || 'Failed to record excluded part scan');
+      }
+    } catch (err) {
+      console.error('Error recording excluded part scan:', err);
+      setError('Failed to record scan. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   /**

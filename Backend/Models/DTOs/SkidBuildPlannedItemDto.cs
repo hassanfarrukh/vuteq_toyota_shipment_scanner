@@ -1,6 +1,7 @@
 // Author: Hassan
 // Date: 2025-12-06
 // Updated: 2025-12-13 - Added ScanDetails with SkidNumber for proper grouping
+// Updated: 2025-01-13 - Added InternalKanbanRequired flag for EXL exclusions support
 // Description: DTO for planned items in Skid Build workflow
 
 namespace Backend.Models.DTOs;
@@ -81,4 +82,10 @@ public class SkidBuildPlannedItemDto
     /// Includes SkidNumber, BoxNumber, InternalKanban, PalletizationCode
     /// </summary>
     public List<ScanDetailDto> ScanDetails { get; set; } = new List<ScanDetailDto>();
+
+    /// <summary>
+    /// Whether internal kanban scan is required for this part.
+    /// False if part is in exclusions table (will receive "EXL" instead)
+    /// </summary>
+    public bool InternalKanbanRequired { get; set; } = true;
 }
