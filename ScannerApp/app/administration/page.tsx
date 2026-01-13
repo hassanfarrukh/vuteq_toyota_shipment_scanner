@@ -80,6 +80,11 @@
  *               Enable PreShipment Scan moved to END (full width). Dock Monitor tab: Behind/Critical Thresholds (2 cols),
  *               Display Mode/Refresh Interval (2 cols), Order Lookback Hours (full width). Internal Kanban tab: Added
  *               max-w-[50%] constraint for consistency. (Hassan)
+ * Updated: 2026-01-13 - Added "Excluded Parts" sub-tab to Site Settings with full CRUD operations (Create, Read, Update,
+ *               Delete) and bulk upload functionality. Integrated with /api/internal-kanban-exclusions backend API. Table
+ *               displays Part Number, Excluded status, Mode (single/bulk), Created By, Created At, and action buttons (Edit,
+ *               Delete). Three modals: Add Part (single entry), Edit Part, and Bulk Upload (Excel). Mode is DISPLAY ONLY
+ *               (auto-set by backend). Uses fa-light fa-ban icon for tab. (Hassan)
  *
  * Admin-only page with 8 tabs:
  * 1. Office Management - Manage office locations (CONNECTED TO API)
@@ -89,15 +94,16 @@
  * 5. User Management - Manage user accounts and permissions (CONNECTED TO API)
  * 6. Dock Monitor Settings - Configure dock monitor thresholds and display (CONNECTED TO API)
  * 7. Toyota API Settings - Manage Toyota API configurations for QA and PROD (CONNECTED TO API)
- * 8. Site Settings - Centralized site-wide settings with 3 sub-tabs:
+ * 8. Site Settings - Centralized site-wide settings with 4 sub-tabs:
  *    - Site Settings: Plant location, hours, pre-shipment scan
  *    - Dock Monitor: Thresholds, display mode, refresh interval, lookback hours
  *    - Internal Kanban: Duplicate rules, window hours, alerts
+ *    - Excluded Parts: Manage parts excluded from internal kanban processing (CONNECTED TO API)
  */
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from '@/contexts/LocationContext';
@@ -114,6 +120,7 @@ import { getWarehouses, createWarehouse as apiCreateWarehouse, updateWarehouse a
 // Removed: Internal Kanban and Dock Monitor settings (now part of Site Settings)
 import { getAllToyotaConfigs, createToyotaConfig, updateToyotaConfig, deleteToyotaConfig, testToyotaConnection, ToyotaConfigResponse, ToyotaConfigCreate, ToyotaConfigUpdate, TOYOTA_CONFIG_DEFAULTS } from '@/lib/api/toyota-config';
 import { getSiteSettings, updateSiteSettings, SiteSettings } from '@/lib/api/siteSettings';
+import { getExclusions, createExclusion, updateExclusion, deleteExclusion, bulkUploadExclusions, InternalKanbanExclusion, ExclusionDto } from '@/lib/api/internal-kanban-exclusions';
 import { fileLogger } from '@/lib/logger';
 
 type Tab = 'office' | 'warehouse' | 'parts' | 'user' | 'toyota-api' | 'site-settings';
@@ -183,6 +190,7 @@ export default function AdministrationPage() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [isLoadingToyotaConfigs, setIsLoadingToyotaConfigs] = useState(true);
   const [isLoadingSiteSettings, setIsLoadingSiteSettings] = useState(false);
+  const [isLoadingExclusions, setIsLoadingExclusions] = useState(false);
 
   // State for data arrays
   const [offices, setOffices] = useState<any[]>([]);
@@ -190,6 +198,7 @@ export default function AdministrationPage() {
   const [parts, setParts] = useState<Part[]>(INITIAL_PARTS);
   const [users, setUsers] = useState<any[]>([]);
   const [toyotaConfigs, setToyotaConfigs] = useState<ToyotaConfigResponse[]>([]);
+  const [exclusions, setExclusions] = useState<InternalKanbanExclusion[]>([]);
 
   // Slider panel states
   const [isAddOfficeOpen, setIsAddOfficeOpen] = useState(false);
@@ -202,6 +211,9 @@ export default function AdministrationPage() {
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
   const [isAddToyotaConfigOpen, setIsAddToyotaConfigOpen] = useState(false);
   const [isEditToyotaConfigOpen, setIsEditToyotaConfigOpen] = useState(false);
+  const [isAddExclusionOpen, setIsAddExclusionOpen] = useState(false);
+  const [isEditExclusionOpen, setIsEditExclusionOpen] = useState(false);
+  const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
 
   // Form states for Office
@@ -249,6 +261,28 @@ export default function AdministrationPage() {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Form states for Exclusion
+  const [exclusionForm, setExclusionForm] = useState({
+    partNumber: '',
+    isExcluded: true
+  });
+
+  // Bulk upload states
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [bulkUploadResult, setBulkUploadResult] = useState<{
+    totalProcessed: number;
+    successCount: number;
+    failedCount: number;
+    errors: string[];
+  } | null>(null);
+  const [errorsExpanded, setErrorsExpanded] = useState(false);
+
+  // Modal-specific error state for exclusion modals
+  const [exclusionModalError, setExclusionModalError] = useState<string | null>(null);
+
+  // File input ref for clearing file selection after upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Site Settings state and sub-tab tracker
   const [siteSettings, setSiteSettings] = useState<SiteSettings>({
     plantLocation: '',
@@ -265,7 +299,7 @@ export default function AdministrationPage() {
     kanbanDuplicateWindowHours: 24,
     kanbanAlertOnDuplicate: true,
   });
-  const [activeSiteSettingsTab, setActiveSiteSettingsTab] = useState<'site' | 'dock' | 'kanban'>('site');
+  const [activeSiteSettingsTab, setActiveSiteSettingsTab] = useState<'site' | 'dock' | 'kanban' | 'excluded-parts'>('site');
 
   // Fetch data on component mount
   useEffect(() => {
@@ -280,9 +314,13 @@ export default function AdministrationPage() {
   useEffect(() => {
     if (activeTab === 'site-settings') {
       fetchSiteSettings();
+      // Fetch exclusions when exclusions sub-tab is active
+      if (activeSiteSettingsTab === 'excluded-parts') {
+        fetchExclusions();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  }, [activeTab, activeSiteSettingsTab]);
 
   // Redirect if not admin - moved after all hooks to comply with React Rules of Hooks
   if (user && user.role !== 'ADMIN') {
@@ -496,6 +534,191 @@ export default function AdministrationPage() {
     }
 
     setIsSaving(false);
+  };
+
+  // ===== EXCLUDED PARTS HANDLERS =====
+  // Fetch exclusions from API
+  const fetchExclusions = async () => {
+    setIsLoadingExclusions(true);
+    setError(null);
+
+    const result = await getExclusions();
+
+    if (result.success && result.data) {
+      setExclusions(result.data);
+    } else {
+      setError(result.error || 'Failed to load exclusions');
+    }
+
+    setIsLoadingExclusions(false);
+  };
+
+  // Add exclusion handler
+  const handleAddExclusion = () => {
+    setExclusionForm({ partNumber: '', isExcluded: true });
+    setExclusionModalError(null); // Clear any previous modal error
+    setIsAddExclusionOpen(true);
+  };
+
+  // Save new exclusion
+  const handleSaveExclusion = async () => {
+    if (!exclusionForm.partNumber.trim()) {
+      setExclusionModalError('Part Number is required');
+      return;
+    }
+
+    setExclusionModalError(null); // Clear previous modal error
+    setError(null);
+    setSuccess(null);
+
+    const result = await createExclusion(exclusionForm);
+
+    if (result.success) {
+      setSuccess('Exclusion added successfully!');
+      setExclusionModalError(null); // Clear modal error on success
+      setIsAddExclusionOpen(false); // Close modal on success
+      fetchExclusions(); // Refresh list
+      setTimeout(() => setSuccess(null), 3000);
+    } else {
+      setExclusionModalError(result.error || 'Failed to add exclusion');
+      // Don't close modal on error - allow user to retry
+    }
+  };
+
+  // Edit exclusion handler
+  const handleEditExclusion = (exclusion: InternalKanbanExclusion) => {
+    setEditingItem(exclusion);
+    setExclusionForm({
+      partNumber: exclusion.partNumber,
+      isExcluded: exclusion.isExcluded
+    });
+    setExclusionModalError(null); // Clear any previous modal error
+    setIsEditExclusionOpen(true);
+  };
+
+  // Update existing exclusion
+  const handleUpdateExclusion = async () => {
+    if (!editingItem || !exclusionForm.partNumber.trim()) {
+      setExclusionModalError('Part Number is required');
+      return;
+    }
+
+    setExclusionModalError(null); // Clear previous modal error
+    setError(null);
+    setSuccess(null);
+
+    const result = await updateExclusion(editingItem.exclusionId, exclusionForm);
+
+    if (result.success) {
+      setSuccess('Exclusion updated successfully!');
+      setExclusionModalError(null); // Clear modal error on success
+      setIsEditExclusionOpen(false); // Close modal on success
+      fetchExclusions(); // Refresh list
+      setTimeout(() => setSuccess(null), 3000);
+    } else {
+      setExclusionModalError(result.error || 'Failed to update exclusion');
+      // Don't close modal on error - allow user to retry
+    }
+  };
+
+  // Delete exclusion handler
+  const handleDeleteExclusion = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this exclusion?')) return;
+
+    setError(null);
+    setSuccess(null);
+
+    const result = await deleteExclusion(id);
+
+    if (result.success) {
+      setSuccess('Exclusion deleted successfully!');
+      fetchExclusions(); // Refresh list
+      setTimeout(() => setSuccess(null), 3000);
+    } else {
+      setError(result.error || 'Failed to delete exclusion');
+    }
+  };
+
+  // Bulk upload handler
+  const handleBulkUpload = () => {
+    setSelectedFile(null);
+    setBulkUploadResult(null);
+    setExclusionModalError(null); // Clear any previous modal error
+    setErrorsExpanded(false); // Reset errors collapsed state
+    setIsBulkUploadOpen(true);
+  };
+
+  // Handle file selection
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+      setBulkUploadResult(null);
+      setExclusionModalError(null); // Clear error when user selects new file
+    }
+  };
+
+  // Upload file
+  const handleUploadFile = async () => {
+    if (!selectedFile) {
+      setExclusionModalError('Please select a file');
+      return;
+    }
+
+    setExclusionModalError(null); // Clear previous modal error
+    setError(null);
+    setSuccess(null);
+
+    const result = await bulkUploadExclusions(selectedFile);
+
+    if (result.success && result.data) {
+      setBulkUploadResult({
+        totalProcessed: result.data.totalProcessed,
+        successCount: result.data.successCount,
+        failedCount: result.data.failedCount,
+        errors: result.data.errors
+      });
+
+      // Clear file selection after upload (success or partial success)
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      if (result.data.failedCount === 0) {
+        setSuccess(`Successfully uploaded ${result.data.successCount} exclusions!`);
+        setExclusionModalError(null); // Clear modal error on success
+        fetchExclusions(); // Refresh list
+        setTimeout(() => {
+          setIsBulkUploadOpen(false);
+          setSuccess(null);
+        }, 3000);
+      } else {
+        // Partial success - errors are shown via bulkUploadResult.errors
+        // Don't close modal - allow user to review and retry
+      }
+    } else {
+      setExclusionModalError(result.error || 'Failed to upload file');
+      // Clear file selection even on error to prevent re-uploading same file
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      // Don't close modal on error - allow user to retry
+    }
+  };
+
+  // Close bulk upload handler - resets state and refreshes data
+  const handleCloseBulkUpload = () => {
+    setIsBulkUploadOpen(false);
+    setSelectedFile(null);
+    setBulkUploadResult(null);
+    setErrorsExpanded(false);
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    // Refresh data
+    fetchExclusions();
   };
 
   // CRUD handlers (Phase 1 - console.log only)
@@ -1605,6 +1828,17 @@ export default function AdministrationPage() {
                     <i className="fa-light fa-square-kanban" style={{ fontSize: '16px', color: '#253262' }}></i>
                     Internal Kanban
                   </button>
+                  <button
+                    onClick={() => setActiveSiteSettingsTab('excluded-parts')}
+                    className={`px-4 py-3 text-sm font-medium transition-colors relative flex items-center gap-2 ${
+                      activeSiteSettingsTab === 'excluded-parts'
+                        ? 'text-[#253262] border-b-2 border-[#253262]'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <i className="fa-light fa-ban" style={{ fontSize: '16px', color: '#253262' }}></i>
+                    Excluded Parts
+                  </button>
                 </div>
 
                 {/* Sub-tab Content */}
@@ -1969,6 +2203,125 @@ export default function AdministrationPage() {
                             </Button>
                           </div>
                         </div>
+                      )}
+
+                      {/* Tab 4: Excluded Parts */}
+                      {activeSiteSettingsTab === 'excluded-parts' && (
+                        <Card>
+                          <CardHeader>
+                            <div className="flex justify-between items-center">
+                              <CardTitle>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base font-semibold text-gray-900">Excluded Parts</span>
+                                  <div className="relative group">
+                                    <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-help" style={{ fontSize: '10px', fontWeight: 'bold' }}>i</div>
+                                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-10 w-64 whitespace-normal">
+                                      Manage parts that should be excluded from internal kanban processing
+                                    </div>
+                                  </div>
+                                </div>
+                              </CardTitle>
+                              <div className="flex gap-2">
+                                <Button onClick={handleBulkUpload} size="md" variant="secondary">
+                                  <i className="fa-light fa-file-excel mr-2"></i>
+                                  Bulk Upload
+                                </Button>
+                                <Button onClick={handleAddExclusion} size="md" variant="primary">
+                                  <i className="fa-light fa-plus mr-2"></i>
+                                  Add Part
+                                </Button>
+                              </div>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            {isLoadingExclusions ? (
+                              <div className="flex justify-center items-center py-12">
+                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#253262]"></div>
+                              </div>
+                            ) : exclusions.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                                <i className="fa fa-ban text-6xl text-gray-300 mb-4"></i>
+                                <p className="text-lg">No excluded parts found</p>
+                                <p className="text-sm text-gray-400">Add parts to exclude from internal kanban processing</p>
+                              </div>
+                            ) : (
+                              <div className="w-full overflow-x-auto">
+                                <table className="w-full table-fixed divide-y divide-gray-200" style={{minWidth: '1000px'}}>
+                                  <colgroup>
+                                    <col style={{width: '180px'}} />
+                                    <col style={{width: '80px'}} />
+                                    <col style={{width: '80px'}} />
+                                    <col style={{width: '120px'}} />
+                                    <col style={{width: '160px'}} />
+                                    <col style={{width: '120px'}} />
+                                    <col style={{width: '160px'}} />
+                                    <col style={{width: '100px'}} />
+                                  </colgroup>
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Part Number</th>
+                                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Excluded</th>
+                                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Mode</th>
+                                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Created By</th>
+                                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Created At</th>
+                                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Updated By</th>
+                                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Updated At</th>
+                                      <th className="sticky right-0 bg-gray-50 px-6 py-4 text-right text-sm font-medium text-gray-500 uppercase tracking-wider shadow-[-4px_0_4px_-4px_rgba(0,0,0,0.1)]">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="bg-white divide-y divide-gray-200">
+                                    {exclusions.map((exclusion) => (
+                                      <tr key={exclusion.exclusionId} className="hover:bg-gray-50">
+                                        <td className="px-6 py-4 text-base font-medium text-gray-900">{exclusion.partNumber}</td>
+                                        <td className="px-6 py-4 text-base">
+                                          {exclusion.isExcluded ? (
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Yes</span>
+                                          ) : (
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">No</span>
+                                          )}
+                                        </td>
+                                        <td className="px-6 py-4 text-base text-gray-600 capitalize">{exclusion.mode}</td>
+                                        <td className="px-6 py-4 text-base text-gray-600">{exclusion.createdByUsername || 'System'}</td>
+                                        <td className="px-6 py-4 text-base text-gray-600">
+                                          {new Date(exclusion.createdAt).toLocaleDateString('en-US', {
+                                            year: 'numeric',
+                                            month: 'short',
+                                            day: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </td>
+                                        <td className="px-6 py-4 text-base text-gray-600">{exclusion.updatedByUsername || '-'}</td>
+                                        <td className="px-6 py-4 text-base text-gray-600">
+                                          {exclusion.updatedAt
+                                            ? new Date(exclusion.updatedAt).toLocaleDateString('en-US', {
+                                                year: 'numeric',
+                                                month: 'short',
+                                                day: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit'
+                                              })
+                                            : '-'
+                                          }
+                                        </td>
+                                        <td className="sticky right-0 bg-white px-6 py-4 shadow-[-4px_0_4px_-4px_rgba(0,0,0,0.1)]">
+                                          <div className="flex items-center justify-end gap-3">
+                                            <button onClick={() => handleEditExclusion(exclusion)} className="text-primary-600 hover:text-primary-900">
+                                              <i className="fa-light fa-edit text-blue-600" style={{ fontSize: '20px' }}></i>
+                                            </button>
+                                            <button onClick={() => handleDeleteExclusion(exclusion.exclusionId)} className="text-error-600 hover:text-error-900">
+                                              <i className="fa-light fa-trash text-red-600" style={{ fontSize: '20px' }}></i>
+                                            </button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
                       )}
                     </>
                   )}
@@ -3354,6 +3707,210 @@ export default function AdministrationPage() {
             <Button onClick={() => setIsEditToyotaConfigOpen(false)} variant="error" className="flex-1">
               <i className="fa-light fa-xmark mr-2"></i>
               Cancel
+            </Button>
+          </div>
+        </div>
+      </SlideOutPanel>
+
+      {/* Exclusion Add Panel */}
+      <SlideOutPanel
+        isOpen={isAddExclusionOpen}
+        onClose={() => setIsAddExclusionOpen(false)}
+        title="Add Excluded Part"
+        width="md"
+      >
+        <div className="space-y-6">
+          {/* Error Display */}
+          {exclusionModalError && (
+            <div className="p-3 bg-red-100 border border-red-300 rounded-lg text-red-700 text-sm">
+              <i className="fa fa-exclamation-circle mr-2"></i>
+              {exclusionModalError}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Part Number *</label>
+            <Input
+              value={exclusionForm.partNumber}
+              onChange={(e) => {
+                setExclusionForm({...exclusionForm, partNumber: e.target.value});
+                setExclusionModalError(null); // Clear error when user types
+              }}
+              placeholder="Enter part number"
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="isExcluded"
+              checked={exclusionForm.isExcluded}
+              onChange={(e) => setExclusionForm({...exclusionForm, isExcluded: e.target.checked})}
+              className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
+            />
+            <label htmlFor="isExcluded" className="text-sm font-medium text-gray-700">
+              Is Excluded (default: Yes)
+            </label>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button onClick={handleSaveExclusion} variant="success-light" className="flex-1">
+              <i className="fa-light fa-floppy-disk mr-2"></i>
+              Save Part
+            </Button>
+            <Button onClick={() => setIsAddExclusionOpen(false)} variant="error" className="flex-1">
+              <i className="fa-light fa-xmark mr-2"></i>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </SlideOutPanel>
+
+      {/* Exclusion Edit Panel */}
+      <SlideOutPanel
+        isOpen={isEditExclusionOpen}
+        onClose={() => setIsEditExclusionOpen(false)}
+        title="Edit Excluded Part"
+        width="md"
+      >
+        <div className="space-y-6">
+          {/* Error Display */}
+          {exclusionModalError && (
+            <div className="p-3 bg-red-100 border border-red-300 rounded-lg text-red-700 text-sm">
+              <i className="fa fa-exclamation-circle mr-2"></i>
+              {exclusionModalError}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Part Number *</label>
+            <Input
+              value={exclusionForm.partNumber}
+              onChange={(e) => {
+                setExclusionForm({...exclusionForm, partNumber: e.target.value});
+                setExclusionModalError(null); // Clear error when user types
+              }}
+              placeholder="Enter part number"
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="isExcludedEdit"
+              checked={exclusionForm.isExcluded}
+              onChange={(e) => setExclusionForm({...exclusionForm, isExcluded: e.target.checked})}
+              className="h-4 w-4 text-[#253262] focus:ring-[#253262] border-gray-300 rounded"
+            />
+            <label htmlFor="isExcludedEdit" className="text-sm font-medium text-gray-700">
+              Is Excluded
+            </label>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button onClick={handleUpdateExclusion} variant="success-light" className="flex-1">
+              <i className="fa-light fa-floppy-disk mr-2"></i>
+              Update Part
+            </Button>
+            <Button onClick={() => setIsEditExclusionOpen(false)} variant="error" className="flex-1">
+              <i className="fa-light fa-xmark mr-2"></i>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </SlideOutPanel>
+
+      {/* Bulk Upload Panel */}
+      <SlideOutPanel
+        isOpen={isBulkUploadOpen}
+        onClose={handleCloseBulkUpload}
+        title="Bulk Upload Excluded Parts"
+        width="lg"
+      >
+        <div className="space-y-6">
+          {/* Error Display */}
+          {exclusionModalError && (
+            <div className="p-3 bg-red-100 border border-red-300 rounded-lg text-red-700 text-sm">
+              <i className="fa fa-exclamation-circle mr-2"></i>
+              {exclusionModalError}
+            </div>
+          )}
+
+          {/* Instructions */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-blue-900 mb-2">
+              <i className="fa fa-circle-info mr-2"></i>
+              Instructions
+            </h4>
+            <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+              <li>Upload an Excel file (.xlsx or .xls)</li>
+              <li>File must contain a single column named <strong>&quot;PartNumber&quot;</strong></li>
+              <li>Each row should contain one part number to exclude</li>
+              <li>All uploaded parts will be marked as excluded by default</li>
+            </ul>
+          </div>
+
+          {/* File Upload */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Excel File *</label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#253262] focus:border-transparent"
+            />
+            {selectedFile && (
+              <p className="text-sm text-gray-600 mt-2">
+                Selected: {selectedFile.name}
+              </p>
+            )}
+          </div>
+
+          {/* Upload Results */}
+          {bulkUploadResult && (
+            <div className={`border rounded-lg p-4 ${
+              bulkUploadResult.failedCount > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'
+            }`}>
+              <h4 className="text-sm font-semibold mb-2">Upload Results</h4>
+              <div className="text-sm space-y-1">
+                <p>Total Processed: <strong>{bulkUploadResult.totalProcessed}</strong></p>
+                <p className="text-green-700">Successful: <strong>{bulkUploadResult.successCount}</strong></p>
+                {bulkUploadResult.failedCount > 0 && (
+                  <>
+                    <p className="text-red-700">Failed: <strong>{bulkUploadResult.failedCount}</strong></p>
+                    {bulkUploadResult.errors && bulkUploadResult.errors.length > 0 && (
+                      <div className="mt-4">
+                        <button
+                          onClick={() => setErrorsExpanded(!errorsExpanded)}
+                          className="flex items-center gap-2 text-sm font-medium text-red-700 hover:text-red-800"
+                        >
+                          <i className={`fa fa-chevron-${errorsExpanded ? 'down' : 'right'} text-xs`}></i>
+                          Errors ({bulkUploadResult.errors.length})
+                        </button>
+                        {errorsExpanded && (
+                          <ul className="mt-2 text-sm text-red-600 list-disc list-inside max-h-40 overflow-y-auto">
+                            {bulkUploadResult.errors.map((err, idx) => (
+                              <li key={idx}>{err}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-4">
+            <Button onClick={handleUploadFile} variant="success-light" className="flex-1" disabled={!selectedFile}>
+              <i className="fa-light fa-file-arrow-up mr-2"></i>
+              Upload File
+            </Button>
+            <Button onClick={handleCloseBulkUpload} variant="error" className="flex-1">
+              <i className="fa-light fa-xmark mr-2"></i>
+              Close
             </Button>
           </div>
         </div>

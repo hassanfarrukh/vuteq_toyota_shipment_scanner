@@ -72,6 +72,7 @@ public class VuteqDbContext : DbContext
     public DbSet<Setting> Settings { get; set; }
     public DbSet<ToyotaApiConfig> ToyotaApiConfigs { get; set; }
     public DbSet<SiteSettings> SiteSettings { get; set; }
+    public DbSet<InternalKanbanExclusion> InternalKanbanExclusions { get; set; }
     #endregion
 
     /// <summary>
@@ -319,6 +320,16 @@ public class VuteqDbContext : DbContext
         {
             entity.HasIndex(e => new { e.Environment, e.IsActive });
             entity.HasIndex(e => e.Environment);
+        });
+        #endregion
+
+        #region InternalKanbanExclusion Configurations
+        modelBuilder.Entity<InternalKanbanExclusion>(entity =>
+        {
+            entity.HasIndex(e => e.PartNumber);
+            entity.HasIndex(e => e.IsExcluded);
+            entity.HasIndex(e => e.CreatedBy);
+            entity.HasIndex(e => e.CreatedAt);
         });
         #endregion
 

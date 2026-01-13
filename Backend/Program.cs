@@ -129,6 +129,7 @@ builder.Services.AddScoped<ISkidBuildRepository, SkidBuildRepository>();
 builder.Services.AddScoped<IShipmentLoadRepository, ShipmentLoadRepository>();
 builder.Services.AddScoped<IToyotaConfigRepository, ToyotaConfigRepository>();
 builder.Services.AddScoped<IDockMonitorRepository, DockMonitorRepository>();
+builder.Services.AddScoped<IInternalKanbanExclusionRepository, InternalKanbanExclusionRepository>();
 
 // Register services (Scoped lifetime for per-request instances)
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -159,6 +160,7 @@ builder.Services.AddScoped<ISkidBuildService, SkidBuildService>();
 builder.Services.AddScoped<IShipmentLoadService, ShipmentLoadService>();
 builder.Services.AddScoped<IPreShipmentService, PreShipmentService>();
 builder.Services.AddScoped<IDockMonitorService, DockMonitorService>();
+builder.Services.AddScoped<IInternalKanbanExclusionService, InternalKanbanExclusionService>();
 
 // Configure Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
