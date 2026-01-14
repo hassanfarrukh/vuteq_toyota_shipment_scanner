@@ -716,7 +716,7 @@ export default function ShipmentLoadV2Page() {
       const dockCode = qr.substring(10, 12).trim();          // Positions 10-12: "V8"
       const orderNumber = qr.substring(12, 24).trim();       // Positions 12-24: "2023080205  " (trim spaces)
       const loadId = qr.substring(24, 36).trim();            // Positions 24-36: "IDVV01      " (12 chars)
-      const palletizationCode = qr.substring(36, 38);        // Positions 36-38: "LB" - INDIVIDUAL
+      const palletizationCode = qr.substring(36, 38).trim();  // Positions 36-38: "LB" - INDIVIDUAL (trimmed)
       const mros = qr.substring(38, 40);                     // Positions 38-40: "05" - INDIVIDUAL
       const skidId = qr.substring(40, 44);                   // Positions 40-44: "001A" - INDIVIDUAL
 

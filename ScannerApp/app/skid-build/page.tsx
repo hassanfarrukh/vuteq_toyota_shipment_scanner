@@ -314,7 +314,7 @@ const parseQRCode = (qrValue: string): ParsedQRData | null => {
     const dockCode = scanValue.substring(10, 12).trim();            // Positions 11-12: "V8"
     const orderNumber = scanValue.substring(12, 24).trim();         // Positions 13-24: "2023080205  " (trim spaces)
     const loadId = scanValue.substring(24, 36).trim();              // Positions 25-36: "IDVV01      " (12 chars)
-    const palletizationCode = scanValue.substring(36, 38);          // Positions 37-38: "LB"
+    const palletizationCode = scanValue.substring(36, 38).trim();   // Positions 37-38: "LB" (trimmed)
     const mros = scanValue.substring(38, 40);                       // Positions 39-40: "05" (MROS)
     const rawSkidId = scanValue.substring(40, 44);                  // Positions 41-44: "001B" (raw, 4 chars)
 
