@@ -1041,10 +1041,10 @@ export default function SkidBuildV2Page() {
       // Calculate box number - use box number from Toyota Kanban
       const boxNumber = parseInt(toyotaKanban.boxNumber) || 1;
 
-      // Parse skid info
-      const skidNumber = currentSkidId.replace(/[AB]$/, '').replace(/^[A-Z0-9]+-/, '');
-      const skidSide = currentSkidId.match(/[AB]$/)?.[0] || 'A';
+      // Parse skid info - extract rawSkidId first, then derive skidNumber from it
       const rawSkidId = currentSkidId.split('-').pop() || currentSkidId;
+      const skidNumber = rawSkidId.substring(0, 3);  // "001" from "001A"
+      const skidSide = rawSkidId.length > 3 ? rawSkidId.substring(3, 4) : 'A';  // "A" from "001A"
 
       // Call API with "EXL" as internal kanban
       const scanResponse = await recordSkidBuildScan(

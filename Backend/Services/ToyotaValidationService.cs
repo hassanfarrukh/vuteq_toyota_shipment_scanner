@@ -307,10 +307,11 @@ public class ToyotaValidationService : IToyotaValidationService
         if (string.IsNullOrWhiteSpace(manifestPalletization) || string.IsNullOrWhiteSpace(kanbanPalletization))
             return ValidationResult.Success(); // Skip if either is null (optional fields)
 
-        if (manifestPalletization != kanbanPalletization)
+        // Trim and compare case-insensitively (manifest may have trailing space from fixed-position parsing)
+        if (!string.Equals(manifestPalletization.Trim(), kanbanPalletization.Trim(), StringComparison.OrdinalIgnoreCase))
         {
             return ValidationResult.Error(
-                $"Palletization code mismatch. Manifest: '{manifestPalletization}', Kanban: '{kanbanPalletization}'");
+                $"Palletization code mismatch. Manifest: '{manifestPalletization.Trim()}', Kanban: '{kanbanPalletization.Trim()}'");
         }
 
         return ValidationResult.Success();
