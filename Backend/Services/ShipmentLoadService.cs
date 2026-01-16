@@ -7,13 +7,16 @@
 // Updated: 2026-01-04 - Fixed Toyota duplicate skid issue: Group by (PalletizationCode + RawSkidId) to send one skid per manifest
 // Updated: 2026-01-06 - Fixed BuildSkidExceptions to filter out ALL Skid Build Order Level codes (10, 11, 12, 20, 26)
 // Updated: 2026-01-16 - Added audit field assignments (Hassan)
+// Updated: 2026-01-16 - Made Toyota environment dynamic based on active config (Hassan)
 // Description: Service for Shipment Load operations - Toyota SCS integration with session management
 
+using Backend.Data;
 using Backend.Models;
 using Backend.Models.DTOs;
 using Backend.Models.Entities;
 using Backend.Models.Enums;
 using Backend.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace Backend.Services;
 
@@ -53,6 +56,7 @@ public class ShipmentLoadService : IShipmentLoadService
     private readonly IShipmentLoadRepository _repository;
     private readonly IToyotaApiService _toyotaApiService;
     private readonly IToyotaValidationService _toyotaValidationService;
+    private readonly VuteqDbContext _context;
     private readonly ILogger<ShipmentLoadService> _logger;
 
     // System user ID for operations when user is not authenticated
@@ -62,11 +66,13 @@ public class ShipmentLoadService : IShipmentLoadService
         IShipmentLoadRepository repository,
         IToyotaApiService toyotaApiService,
         IToyotaValidationService toyotaValidationService,
+        VuteqDbContext context,
         ILogger<ShipmentLoadService> logger)
     {
         _repository = repository;
         _toyotaApiService = toyotaApiService;
         _toyotaValidationService = toyotaValidationService;
+        _context = context;
         _logger = logger;
     }
 
@@ -586,8 +592,45 @@ public class ShipmentLoadService : IShipmentLoadService
                 }
             }
 
-            // 5. Submit to Toyota API (using default environment for now - could be configurable)
-            var toyotaResponse = await _toyotaApiService.SubmitShipmentLoadAsync("QA", toyotaPayload);
+            // 5. Submit to Toyota API - Get active environment from database
+            var activeConfig = await _context.ToyotaApiConfigs
+                .FirstOrDefaultAsync(c => c.IsActive);
+
+            if (activeConfig == null)
+            {
+                _logger.LogError("No active Toyota API configuration found");
+
+                // Update session with error status
+                session.ToyotaStatus = "error";
+                session.ToyotaErrorMessage = "No active Toyota API configuration found. Please configure Toyota API settings in Administration.";
+                session.ToyotaSubmittedAt = DateTime.Now;
+                session.Status = "error";
+                session.UpdatedBy = request.UserId.ToString();
+                session.UpdatedAt = DateTime.Now;
+                await _repository.UpdateSessionAsync(session);
+
+                // Update all orders with error status
+                foreach (var order in orders)
+                {
+                    order.Status = OrderStatus.ShipmentError;
+                    order.ToyotaShipmentStatus = "error";
+                    order.ToyotaShipmentErrorMessage = "No active Toyota API configuration found. Please configure Toyota API settings in Administration.";
+                    order.ToyotaShipmentSubmittedAt = DateTime.Now;
+                    order.UpdatedBy = request.UserId.ToString();
+                    order.UpdatedAt = DateTime.Now;
+                }
+                await _repository.UpdateOrdersAsync(orders);
+
+                return ApiResponse<ShipmentLoadCompleteResponseDto>.ErrorResponse(
+                    "Toyota API configuration missing",
+                    "No active Toyota API configuration found. Please configure Toyota API settings in Administration.");
+            }
+
+            var environment = activeConfig.Environment;
+            _logger.LogInformation("Submitting to Toyota API - Environment: {Environment}, Route: {Route}, Orders: {OrderCount}",
+                environment, session.RouteNumber, orders.Count);
+
+            var toyotaResponse = await _toyotaApiService.SubmitShipmentLoadAsync(environment, toyotaPayload);
 
             // 6. Update session with Toyota response
             session.ToyotaStatus = toyotaResponse.Success ? "confirmed" : "error";

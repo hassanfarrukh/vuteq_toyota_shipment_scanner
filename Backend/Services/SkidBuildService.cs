@@ -5,13 +5,16 @@
 // Updated: 2025-12-22 - Fixed Order.Status to set SkidBuildError when Toyota API fails
 // Updated: 2025-01-13 - Added EXL (excluded) parts support - skips internal kanban validation for excluded parts
 // Updated: 2026-01-16 - Added audit field assignments (Hassan)
+// Updated: 2026-01-16 - Made Toyota environment dynamic based on active config (Hassan)
 // Description: Service for Skid Build operations - handles business logic and Toyota API integration
 
+using Backend.Data;
 using Backend.Models;
 using Backend.Models.DTOs;
 using Backend.Models.Entities;
 using Backend.Models.Enums;
 using Backend.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace Backend.Services;
 
@@ -63,6 +66,7 @@ public class SkidBuildService : ISkidBuildService
     private readonly IToyotaApiService _toyotaApiService;
     private readonly ISiteSettingsRepository _siteSettingsRepository;
     private readonly IInternalKanbanExclusionRepository _exclusionRepository;
+    private readonly VuteqDbContext _context;
     private readonly ILogger<SkidBuildService> _logger;
 
     // System user ID for operations when user is not authenticated
@@ -74,6 +78,7 @@ public class SkidBuildService : ISkidBuildService
         IToyotaApiService toyotaApiService,
         ISiteSettingsRepository siteSettingsRepository,
         IInternalKanbanExclusionRepository exclusionRepository,
+        VuteqDbContext context,
         ILogger<SkidBuildService> logger)
     {
         _skidBuildRepository = skidBuildRepository;
@@ -81,6 +86,7 @@ public class SkidBuildService : ISkidBuildService
         _toyotaApiService = toyotaApiService;
         _siteSettingsRepository = siteSettingsRepository;
         _exclusionRepository = exclusionRepository;
+        _context = context;
         _logger = logger;
     }
 
@@ -923,8 +929,47 @@ public class SkidBuildService : ISkidBuildService
             };
 
             // ===== SUBMIT TO TOYOTA API =====
-            // TODO: Make environment configurable (Dev, QA, Prod)
-            var environment = "QA"; // Default to QA for testing
+            // Get active Toyota environment from database
+            var activeConfig = await _context.ToyotaApiConfigs
+                .FirstOrDefaultAsync(c => c.IsActive);
+
+            if (activeConfig == null)
+            {
+                _logger.LogError("No active Toyota API configuration found");
+
+                // Update order with error status
+                order.Status = OrderStatus.SkidBuildError;
+                order.ToyotaSkidBuildStatus = "error";
+                order.ToyotaSkidBuildErrorMessage = "No active Toyota API configuration found. Please configure Toyota API settings in Administration.";
+                order.ToyotaSkidBuildSubmittedAt = DateTime.Now;
+                order.UpdatedBy = userId.ToString();
+                await _skidBuildRepository.UpdateOrderAsync(order);
+
+                // Update session status to completed (even though Toyota submission failed)
+                session.Status = "completed";
+                session.CompletedAt = DateTime.Now;
+                session.UpdatedBy = userId.ToString();
+                session.UpdatedAt = DateTime.Now;
+                await _skidBuildRepository.UpdateSessionAsync(session);
+
+                var errorResponse = new SkidBuildCompleteResponseDto
+                {
+                    ConfirmationNumber = $"SKB-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{new Random().Next(1000, 9999)}",
+                    SessionId = sessionId,
+                    TotalScanned = scansList.Count,
+                    TotalExceptions = exceptions.Count(),
+                    CompletedAt = DateTime.Now,
+                    ToyotaSubmissionStatus = "error",
+                    ToyotaConfirmationNumber = null,
+                    ToyotaErrorMessage = "No active Toyota API configuration found. Please configure Toyota API settings in Administration."
+                };
+
+                return ApiResponse<SkidBuildCompleteResponseDto>.SuccessResponse(
+                    errorResponse,
+                    "Skid build completed locally, but Toyota API configuration is missing. Please configure in Administration.");
+            }
+
+            var environment = activeConfig.Environment;
 
             _logger.LogInformation("Submitting to Toyota API - Environment: {Environment}, Order: {OrderNumber}, Skids: {SkidCount}",
                 environment, order.RealOrderNumber, toyotaSkids.Count);
