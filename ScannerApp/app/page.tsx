@@ -12,6 +12,8 @@
  * Updated: 2025-11-05 - Added upload and file-arrow-up icon mappings for Upload Order Data tile (Hassan)
  * Updated: 2025-11-05 - Reduced vertical spacing to eliminate scrolling: space-y reduced, gap-y separated, py and min-h reduced (Hassan)
  * Updated: 2026-01-03 - Added Site Settings check to conditionally hide Pre-shipment Scan tile based on enablePreShipmentScan flag (Hassan)
+ * Updated: 2026-01-16 - CRITICAL FIX: Added loading state to prevent PreShipment tile from showing before site settings load (Hassan)
+ * Updated: 2026-01-16 - Changed loading check to use enablePreShipmentScan === null (auth-aware loading) (Hassan)
  *
  * Main dashboard with feature tiles - simple and clean design
  */
@@ -115,39 +117,48 @@ export default function HomePage() {
           </div>
         </Card>
 
-        {/* Dashboard Tiles Grid - Premium Mobile-First Design */}
-        {/* Optimized touch targets for scanner devices */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2 sm:gap-x-4 sm:gap-y-3">
-          {filteredTiles.map((tile) => (
-            <Card
-              key={tile.id}
-              className="group hover:shadow-xl transition-all duration-300 cursor-pointer bg-white border border-gray-200 hover:border-[#253262]/30"
-              onClick={() => router.push(tile.route)}
-            >
-              {/* Enhanced Tile Content with better visual hierarchy */}
-              <div className="relative overflow-hidden">
-                {/* Hover effect overlay */}
-                <div className="absolute inset-0 bg-gradient-to-br from-[#253262]/0 to-[#3d4d7f]/0 group-hover:from-[#253262]/5 group-hover:to-[#3d4d7f]/5 transition-all duration-300"></div>
+        {/* Loading State - Show while site settings are being fetched */}
+        {/* Author: Hassan, Date: 2026-01-16 - Auth-aware loading: null = not loaded, boolean = loaded */}
+        {enablePreShipmentScan === null ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <i className="fa-light fa-spinner-third text-5xl text-[#253262] animate-spin mb-4"></i>
+            <p className="text-sm text-gray-600 font-medium">Loading dashboard...</p>
+          </div>
+        ) : (
+          /* Dashboard Tiles Grid - Premium Mobile-First Design */
+          /* Optimized touch targets for scanner devices */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2 sm:gap-x-4 sm:gap-y-3">
+            {filteredTiles.map((tile) => (
+              <Card
+                key={tile.id}
+                className="group hover:shadow-xl transition-all duration-300 cursor-pointer bg-white border border-gray-200 hover:border-[#253262]/30"
+                onClick={() => router.push(tile.route)}
+              >
+                {/* Enhanced Tile Content with better visual hierarchy */}
+                <div className="relative overflow-hidden">
+                  {/* Hover effect overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#253262]/0 to-[#3d4d7f]/0 group-hover:from-[#253262]/5 group-hover:to-[#3d4d7f]/5 transition-all duration-300"></div>
 
-                {/* Content */}
-                <div className="relative flex flex-col items-center justify-center text-center py-5 px-4 min-h-[120px] sm:min-h-[140px]">
-                  {/* Icon - Clean outlined style without background */}
-                  <div className="mb-4 transition-transform duration-300 group-hover:scale-110">
-                    {getTileIcon(tile.icon)}
+                  {/* Content */}
+                  <div className="relative flex flex-col items-center justify-center text-center py-5 px-4 min-h-[120px] sm:min-h-[140px]">
+                    {/* Icon - Clean outlined style without background */}
+                    <div className="mb-4 transition-transform duration-300 group-hover:scale-110">
+                      {getTileIcon(tile.icon)}
+                    </div>
+
+                    {/* Title - Large enough for easy reading on mobile */}
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-900 group-hover:text-[#253262] transition-colors">
+                      {tile.title}
+                    </h2>
                   </div>
 
-                  {/* Title - Large enough for easy reading on mobile */}
-                  <h2 className="text-base sm:text-lg font-semibold text-gray-900 group-hover:text-[#253262] transition-colors">
-                    {tile.title}
-                  </h2>
+                  {/* Bottom accent indicator */}
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#253262] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 </div>
-
-                {/* Bottom accent indicator */}
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#253262] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              </div>
-            </Card>
-          ))}
-        </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );
