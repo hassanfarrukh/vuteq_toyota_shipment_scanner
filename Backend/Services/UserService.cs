@@ -1,5 +1,6 @@
 // Author: Hassan
 // Date: 2025-11-25
+// Updated: 2026-01-16 - Added audit field assignments (Hassan)
 // Description: Service for User management - handles business logic (active users + all users)
 
 using Backend.Models;
@@ -17,8 +18,8 @@ public interface IUserService
     Task<ApiResponse<IEnumerable<UserDto>>> GetAllUsersAsync();
     Task<ApiResponse<IEnumerable<UserDto>>> GetAllUsersIncludingInactiveAsync();
     Task<ApiResponse<UserDto>> GetUserByIdAsync(Guid userId);
-    Task<ApiResponse<UserDto>> CreateUserAsync(CreateUserRequest request);
-    Task<ApiResponse<UserDto>> UpdateUserAsync(Guid userId, UpdateUserRequest request);
+    Task<ApiResponse<UserDto>> CreateUserAsync(CreateUserRequest request, Guid createdByUserId);
+    Task<ApiResponse<UserDto>> UpdateUserAsync(Guid userId, UpdateUserRequest request, Guid updatedByUserId);
     Task<ApiResponse<bool>> DeleteUserAsync(Guid userId);
 }
 
@@ -125,7 +126,7 @@ public class UserService : IUserService
     /// <summary>
     /// Create a new user
     /// </summary>
-    public async Task<ApiResponse<UserDto>> CreateUserAsync(CreateUserRequest request)
+    public async Task<ApiResponse<UserDto>> CreateUserAsync(CreateUserRequest request, Guid createdByUserId)
     {
         try
         {
@@ -146,6 +147,7 @@ public class UserService : IUserService
                 Code = request.Code,
                 IsSupervisor = request.Supervisor ?? false,
                 IsActive = true,
+                CreatedBy = createdByUserId.ToString(),
                 CreatedAt = DateTime.Now
             };
 
@@ -171,7 +173,7 @@ public class UserService : IUserService
     /// <summary>
     /// Update an existing user
     /// </summary>
-    public async Task<ApiResponse<UserDto>> UpdateUserAsync(Guid userId, UpdateUserRequest request)
+    public async Task<ApiResponse<UserDto>> UpdateUserAsync(Guid userId, UpdateUserRequest request, Guid updatedByUserId)
     {
         try
         {
@@ -220,6 +222,7 @@ public class UserService : IUserService
                 user.PasswordHash = _authService.HashPassword(request.Password);
             }
 
+            user.UpdatedBy = updatedByUserId.ToString();
             user.UpdatedAt = DateTime.Now;
 
             var updatedUser = await _userRepository.UpdateAsync(user);

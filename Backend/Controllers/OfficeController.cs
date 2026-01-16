@@ -1,5 +1,6 @@
 // Author: Hassan
 // Date: 2025-11-24
+// Updated: 2026-01-16 - Added audit field assignments (Hassan)
 // Description: Controller for Office management - provides CRUD endpoints
 
 using Backend.Models;
@@ -7,6 +8,7 @@ using Backend.Models.DTOs;
 using Backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Backend.Controllers;
 
@@ -100,9 +102,10 @@ public class OfficeController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        _logger.LogInformation("Creating new office: {Code}", request.Code);
+        var userId = GetCurrentUserId();
+        _logger.LogInformation("Creating new office: {Code} by user {UserId}", request.Code, userId);
 
-        var response = await _officeService.CreateOfficeAsync(request);
+        var response = await _officeService.CreateOfficeAsync(request, userId);
 
         if (!response.Success)
         {
@@ -142,9 +145,10 @@ public class OfficeController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        _logger.LogInformation("Updating office: {OfficeId}", id);
+        var userId = GetCurrentUserId();
+        _logger.LogInformation("Updating office: {OfficeId} by user {UserId}", id, userId);
 
-        var response = await _officeService.UpdateOfficeAsync(id, request);
+        var response = await _officeService.UpdateOfficeAsync(id, request, userId);
 
         if (!response.Success)
         {
@@ -189,4 +193,25 @@ public class OfficeController : ControllerBase
 
         return Ok(response);
     }
+
+    #region Helper Methods
+
+    /// <summary>
+    /// Get current user ID from JWT token claims
+    /// </summary>
+    private Guid GetCurrentUserId()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                          ?? User.FindFirst("sub")?.Value
+                          ?? User.FindFirst("userId")?.Value;
+
+        if (Guid.TryParse(userIdClaim, out var userId))
+        {
+            return userId;
+        }
+
+        return Guid.Empty;
+    }
+
+    #endregion
 }

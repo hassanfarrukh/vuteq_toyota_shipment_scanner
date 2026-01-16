@@ -1,5 +1,6 @@
 // Author: Hassan
 // Date: 2025-11-25
+// Updated: 2026-01-16 - Added audit field assignments (Hassan)
 // Description: Controller for User management - provides CRUD endpoints + Get All Users (active/inactive)
 
 using Backend.Models;
@@ -7,6 +8,7 @@ using Backend.Models.DTOs;
 using Backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Backend.Controllers;
 
@@ -125,9 +127,10 @@ public class UserController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        _logger.LogInformation("Creating new user: {Name}", request.Name);
+        var currentUserId = GetCurrentUserId();
+        _logger.LogInformation("Creating new user: {Name} by user {UserId}", request.Name, currentUserId);
 
-        var response = await _userService.CreateUserAsync(request);
+        var response = await _userService.CreateUserAsync(request, currentUserId);
 
         if (!response.Success)
         {
@@ -167,9 +170,10 @@ public class UserController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        _logger.LogInformation("Updating user: {UserId}", id);
+        var currentUserId = GetCurrentUserId();
+        _logger.LogInformation("Updating user: {UserId} by user {CurrentUserId}", id, currentUserId);
 
-        var response = await _userService.UpdateUserAsync(id, request);
+        var response = await _userService.UpdateUserAsync(id, request, currentUserId);
 
         if (!response.Success)
         {
@@ -212,4 +216,25 @@ public class UserController : ControllerBase
 
         return Ok(response);
     }
+
+    #region Helper Methods
+
+    /// <summary>
+    /// Get current user ID from JWT token claims
+    /// </summary>
+    private Guid GetCurrentUserId()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                          ?? User.FindFirst("sub")?.Value
+                          ?? User.FindFirst("userId")?.Value;
+
+        if (Guid.TryParse(userIdClaim, out var userId))
+        {
+            return userId;
+        }
+
+        return Guid.Empty;
+    }
+
+    #endregion
 }

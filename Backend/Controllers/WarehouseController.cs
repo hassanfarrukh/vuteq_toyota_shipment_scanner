@@ -1,5 +1,6 @@
 // Author: Hassan
 // Date: 2025-11-24
+// Updated: 2026-01-16 - Added audit field assignments (Hassan)
 // Description: Controller for Warehouse management - provides CRUD endpoints
 
 using Backend.Models;
@@ -7,6 +8,7 @@ using Backend.Models.DTOs;
 using Backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Backend.Controllers;
 
@@ -100,9 +102,10 @@ public class WarehouseController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        _logger.LogInformation("Creating new warehouse: {Code}", request.Code);
+        var userId = GetCurrentUserId();
+        _logger.LogInformation("Creating new warehouse: {Code} by user {UserId}", request.Code, userId);
 
-        var response = await _warehouseService.CreateWarehouseAsync(request);
+        var response = await _warehouseService.CreateWarehouseAsync(request, userId);
 
         if (!response.Success)
         {
@@ -142,9 +145,10 @@ public class WarehouseController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        _logger.LogInformation("Updating warehouse: {WarehouseId}", id);
+        var userId = GetCurrentUserId();
+        _logger.LogInformation("Updating warehouse: {WarehouseId} by user {UserId}", id, userId);
 
-        var response = await _warehouseService.UpdateWarehouseAsync(id, request);
+        var response = await _warehouseService.UpdateWarehouseAsync(id, request, userId);
 
         if (!response.Success)
         {
@@ -187,4 +191,25 @@ public class WarehouseController : ControllerBase
 
         return Ok(response);
     }
+
+    #region Helper Methods
+
+    /// <summary>
+    /// Get current user ID from JWT token claims
+    /// </summary>
+    private Guid GetCurrentUserId()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                          ?? User.FindFirst("sub")?.Value
+                          ?? User.FindFirst("userId")?.Value;
+
+        if (Guid.TryParse(userIdClaim, out var userId))
+        {
+            return userId;
+        }
+
+        return Guid.Empty;
+    }
+
+    #endregion
 }

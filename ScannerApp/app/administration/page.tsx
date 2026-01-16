@@ -111,7 +111,7 @@ import Card, { CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Alert from '@/components/ui/Alert';
-import { LOCATIONS } from '@/lib/constants';
+import { LOCATIONS, getLocationOptions } from '@/lib/constants';
 import VUTEQStaticBackground from '@/components/layout/VUTEQStaticBackground';
 import SlideOutPanel from '@/components/ui/SlideOutPanel';
 import { getUsers, createUser as apiCreateUser, updateUser as apiUpdateUser, deleteUser as apiDeleteUser, User as ApiUser, CreateUserDto, UpdateUserDto } from '@/lib/api/users';
@@ -1875,8 +1875,8 @@ export default function AdministrationPage() {
                                 className="w-64 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#253262] focus:border-transparent"
                               >
                                 <option value="">Select Plant Location</option>
-                                {LOCATIONS.map((location) => (
-                                  <option key={location.id} value={location.name}>{location.name}</option>
+                                {getLocationOptions().map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
                                 ))}
                               </select>
                             </div>

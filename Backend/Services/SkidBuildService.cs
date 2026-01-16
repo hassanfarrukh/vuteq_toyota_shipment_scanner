@@ -4,6 +4,7 @@
 // Updated: 2025-12-14 - Integrated Toyota API submission in CompleteSessionAsync
 // Updated: 2025-12-22 - Fixed Order.Status to set SkidBuildError when Toyota API fails
 // Updated: 2025-01-13 - Added EXL (excluded) parts support - skips internal kanban validation for excluded parts
+// Updated: 2026-01-16 - Added audit field assignments (Hassan)
 // Description: Service for Skid Build operations - handles business logic and Toyota API integration
 
 using Backend.Models;
@@ -663,6 +664,7 @@ public class SkidBuildService : ISkidBuildService
                 if (order != null && order.Status == OrderStatus.Planned)
                 {
                     order.Status = OrderStatus.SkidBuilding;
+                    order.UpdatedBy = resolvedUserId.ToString();
                     order.UpdatedAt = DateTime.Now;
                     await _skidBuildRepository.UpdateOrderAsync(order);
 
@@ -937,6 +939,7 @@ public class SkidBuildService : ISkidBuildService
                 order.ToyotaSkidBuildStatus = "confirmed";
                 order.ToyotaSkidBuildSubmittedAt = DateTime.Now;
                 order.ToyotaSkidBuildErrorMessage = null;
+                order.UpdatedBy = userId.ToString();
 
                 _logger.LogInformation("Toyota API submission successful - ConfirmationNumber: {ConfirmationNumber}",
                     toyotaResponse.ConfirmationNumber);
@@ -947,6 +950,7 @@ public class SkidBuildService : ISkidBuildService
                 order.ToyotaSkidBuildStatus = "error";
                 order.ToyotaSkidBuildErrorMessage = toyotaResponse.ErrorMessage ?? "Unknown error from Toyota API";
                 order.ToyotaSkidBuildSubmittedAt = DateTime.Now;
+                order.UpdatedBy = userId.ToString();
 
                 _logger.LogError("Toyota API submission failed - Code: {Code}, Error: {Error}",
                     toyotaResponse.Code, toyotaResponse.ErrorMessage);
@@ -963,6 +967,7 @@ public class SkidBuildService : ISkidBuildService
             // Update session
             session.Status = "completed";
             session.CompletedAt = DateTime.Now;
+            session.UpdatedBy = userId.ToString();
             session.UpdatedAt = DateTime.Now;
 
             await _skidBuildRepository.UpdateSessionAsync(session);
@@ -1110,6 +1115,7 @@ public class SkidBuildService : ISkidBuildService
             order.ToyotaSkidBuildStatus = null;
             order.ToyotaSkidBuildErrorMessage = null;
             order.ToyotaSkidBuildSubmittedAt = null;
+            order.UpdatedBy = Guid.Empty.ToString(); // System-initiated restart
 
             await _skidBuildRepository.UpdateOrderAsync(order);
             _logger.LogInformation("[SKID BUILD RESTART] Order {OrderNumber} reset to Planned status", order.RealOrderNumber);
@@ -1117,6 +1123,7 @@ public class SkidBuildService : ISkidBuildService
             // 9. Mark session as "cancelled"
             session.Status = "cancelled";
             session.CompletedAt = DateTime.Now;
+            session.UpdatedBy = Guid.Empty.ToString(); // System-initiated restart
             await _skidBuildRepository.UpdateSessionAsync(session);
             _logger.LogInformation("[SKID BUILD RESTART] Session {SessionId} marked as cancelled", sessionId);
 

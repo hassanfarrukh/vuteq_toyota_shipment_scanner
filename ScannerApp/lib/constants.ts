@@ -6,13 +6,43 @@
  * Updated: 2025-11-05 - Added "Upload Order Data" dashboard tile (tile-007) for SUPERVISOR/ADMIN users (Hassan)
  * Updated: 2025-11-05 - Changed "Upload Order Data" icon from 'upload' to 'file-arrow-up' (Hassan)
  * Updated: 2025-12-01 - Changed "Upload Order Data" to "Order Data" with clipboard-list icon (Hassan)
+ * Updated: 2026-01-16 - Added LOCATION_CODE_MAP for office code to city mapping and getLocationOptions helper (Hassan)
  * Centralized configuration and constants
  */
 
 import type { Location, DashboardTile } from '@/types';
 
-// ===== LOCATION CONFIGURATION =====
+// ===== LOCATION CODE MAPPING =====
+// Updated: 2026-01-16 - Office code to city name mapping (Hassan)
+export const LOCATION_CODE_MAP: Record<string, string> = {
+  'DVS-IN': 'Indiana',
+  'DVS-MS': 'Mississippi',
+  'VuQ-KY': 'Kentucky',
+  'VuQ-AL': 'Alabama',
+  'VuQ-VOSC': 'Indiana',
+  'TEQ-TX': 'Texas',
+};
+
+// Get all location codes for dropdowns
+export const LOCATION_CODES = Object.keys(LOCATION_CODE_MAP);
+
+// Format location for display: "VuQ-VOSC | Indiana"
+export function formatLocation(code: string): string {
+  const city = LOCATION_CODE_MAP[code];
+  return city ? `${code} | ${city}` : code;
+}
+
+// Get dropdown options with label and value for Site Settings
+export function getLocationOptions(): { value: string; label: string }[] {
+  return LOCATION_CODES.map(code => ({
+    value: code,
+    label: formatLocation(code),
+  }));
+}
+
+// ===== LOCATION CONFIGURATION (LEGACY) =====
 // Updated: 2026-01-09 - Issue #5: Changed from state names to actual site names (Hassan)
+// Note: This is kept for backward compatibility. New code should use LOCATION_CODE_MAP above.
 export const LOCATIONS: Location[] = [
   {
     id: 'loc-001',

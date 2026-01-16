@@ -30,6 +30,7 @@
  * Updated: 2025-11-05 - Added upload-order page support: displays last order upload timestamp instead of location (Hassan)
  * Updated: 2025-12-01 - Integrated LocationContext for global location display from Dock Monitor settings (Hassan)
  * Updated: 2025-12-01 - Changed upload-order subtitle to static text: "Manage imported files and view planned order items" (Hassan)
+ * Updated: 2026-01-16 - Integrated formatLocation helper to display location as "Code | City" format (Hassan)
  * Application header with navigation, brand logos, and user session
  */
 
@@ -41,6 +42,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePageContext } from '@/contexts/PageContext';
 import { useLocation } from '@/contexts/LocationContext';
+import { formatLocation } from '@/lib/constants';
 
 export default function Header() {
   const pathname = usePathname();
@@ -189,8 +191,8 @@ export default function Header() {
       return 'Manage imported files and view planned order items';
     }
 
-    // Default to location
-    return location;
+    // Default to formatted location (Code | City)
+    return location ? formatLocation(location) : location;
   };
 
   // Get last upload time - returns static text on server, dynamic on client
@@ -298,7 +300,7 @@ export default function Header() {
                       {/* Location Display */}
                       <div className="mt-2 flex items-center gap-2">
                         <i className="fa-regular fa-location-dot text-sm" style={{ color: '#64748b' }}></i>
-                        <span className="text-sm font-medium text-gray-700">{location}</span>
+                        <span className="text-sm font-medium text-gray-700">{location ? formatLocation(location) : location}</span>
                       </div>
                     </div>
 

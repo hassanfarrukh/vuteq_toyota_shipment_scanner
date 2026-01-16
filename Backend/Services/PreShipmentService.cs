@@ -1,5 +1,6 @@
 // Author: Hassan
 // Date: 2025-12-31
+// Updated: 2026-01-16 - Added audit field assignments (Hassan)
 // Description: Service for Pre-Shipment operations - Manifest-based session creation before driver arrives
 
 using Backend.Models;
@@ -407,6 +408,7 @@ public class PreShipmentService : IPreShipmentService
 
             // Mark as cancelled instead of deleting
             session.Status = "cancelled";
+            session.UpdatedBy = Guid.Empty.ToString(); // System-initiated cancellation
             session.UpdatedAt = DateTime.Now;
             await _repository.UpdateSessionAsync(session);
 

@@ -1,5 +1,6 @@
 // Author: Hassan
 // Date: 2025-11-24
+// Updated: 2026-01-16 - Added audit field assignments (Hassan)
 // Description: Service for Warehouse management - handles business logic
 
 using Backend.Models;
@@ -16,8 +17,8 @@ public interface IWarehouseService
 {
     Task<ApiResponse<IEnumerable<WarehouseDto>>> GetAllWarehousesAsync();
     Task<ApiResponse<WarehouseDto>> GetWarehouseByIdAsync(Guid warehouseId);
-    Task<ApiResponse<WarehouseDto>> CreateWarehouseAsync(CreateWarehouseRequest request);
-    Task<ApiResponse<WarehouseDto>> UpdateWarehouseAsync(Guid warehouseId, UpdateWarehouseRequest request);
+    Task<ApiResponse<WarehouseDto>> CreateWarehouseAsync(CreateWarehouseRequest request, Guid userId);
+    Task<ApiResponse<WarehouseDto>> UpdateWarehouseAsync(Guid warehouseId, UpdateWarehouseRequest request, Guid userId);
     Task<ApiResponse<bool>> DeleteWarehouseAsync(Guid warehouseId);
 }
 
@@ -99,7 +100,7 @@ public class WarehouseService : IWarehouseService
     /// <summary>
     /// Create a new warehouse
     /// </summary>
-    public async Task<ApiResponse<WarehouseDto>> CreateWarehouseAsync(CreateWarehouseRequest request)
+    public async Task<ApiResponse<WarehouseDto>> CreateWarehouseAsync(CreateWarehouseRequest request, Guid userId)
     {
         try
         {
@@ -136,6 +137,7 @@ public class WarehouseService : IWarehouseService
                 ContactEmail = request.ContactEmail,
                 OfficeCode = request.Office,
                 IsActive = true,
+                CreatedBy = userId.ToString(),
                 CreatedAt = DateTime.Now
             };
 
@@ -161,7 +163,7 @@ public class WarehouseService : IWarehouseService
     /// <summary>
     /// Update an existing warehouse
     /// </summary>
-    public async Task<ApiResponse<WarehouseDto>> UpdateWarehouseAsync(Guid warehouseId, UpdateWarehouseRequest request)
+    public async Task<ApiResponse<WarehouseDto>> UpdateWarehouseAsync(Guid warehouseId, UpdateWarehouseRequest request, Guid userId)
     {
         try
         {
@@ -193,6 +195,7 @@ public class WarehouseService : IWarehouseService
             warehouse.ContactName = request.ContactName;
             warehouse.ContactEmail = request.ContactEmail;
             warehouse.OfficeCode = request.Office;
+            warehouse.UpdatedBy = userId.ToString();
             warehouse.UpdatedAt = DateTime.Now;
 
             var updatedWarehouse = await _warehouseRepository.UpdateAsync(warehouse);

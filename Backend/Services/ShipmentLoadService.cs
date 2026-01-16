@@ -6,6 +6,7 @@
 // Updated: 2025-12-24 - Fixed exception code mapping: Skid Build code 12 -> Shipment Load code 24 at trailer level
 // Updated: 2026-01-04 - Fixed Toyota duplicate skid issue: Group by (PalletizationCode + RawSkidId) to send one skid per manifest
 // Updated: 2026-01-06 - Fixed BuildSkidExceptions to filter out ALL Skid Build Order Level codes (10, 11, 12, 20, 26)
+// Updated: 2026-01-16 - Added audit field assignments (Hassan)
 // Description: Service for Shipment Load operations - Toyota SCS integration with session management
 
 using Backend.Models;
@@ -168,6 +169,7 @@ public class ShipmentLoadService : IShipmentLoadService
 
                 if (needsUpdate)
                 {
+                    existingSession.UpdatedBy = request.UserId.ToString();
                     existingSession.UpdatedAt = DateTime.Now;
                     await _repository.UpdateSessionAsync(existingSession);
                 }
@@ -246,6 +248,7 @@ public class ShipmentLoadService : IShipmentLoadService
             session.DriverLastName = request.DriverLastName;
             session.SupplierFirstName = request.SupplierFirstName;
             session.SupplierLastName = request.SupplierLastName;
+            session.UpdatedBy = Guid.Empty.ToString(); // No userId available in UpdateSessionRequestDto
             session.UpdatedAt = DateTime.Now;
 
             session = await _repository.UpdateSessionAsync(session);
@@ -384,6 +387,7 @@ public class ShipmentLoadService : IShipmentLoadService
 
             // Update order status to ShipmentLoading
             order.Status = OrderStatus.ShipmentLoading;
+            order.UpdatedBy = Guid.Empty.ToString(); // No userId available in scan request
             order.UpdatedAt = DateTime.Now;
             await _repository.UpdateOrdersAsync(new List<Order> { order });
 
@@ -592,6 +596,7 @@ public class ShipmentLoadService : IShipmentLoadService
             session.ToyotaSubmittedAt = DateTime.Now;
             session.Status = toyotaResponse.Success ? "completed" : "error";
             session.CompletedAt = toyotaResponse.Success ? DateTime.Now : null;
+            session.UpdatedBy = request.UserId.ToString();
             session.UpdatedAt = DateTime.Now;
 
             await _repository.UpdateSessionAsync(session);
@@ -607,6 +612,7 @@ public class ShipmentLoadService : IShipmentLoadService
                     order.ToyotaShipmentStatus = "error";
                     order.ToyotaShipmentErrorMessage = toyotaResponse.ErrorMessage ?? "Unknown error from Toyota API";
                     order.ToyotaShipmentSubmittedAt = DateTime.Now;
+                    order.UpdatedBy = request.UserId.ToString();
                     order.UpdatedAt = DateTime.Now;
                 }
                 await _repository.UpdateOrdersAsync(orders);
@@ -634,6 +640,7 @@ public class ShipmentLoadService : IShipmentLoadService
                 order.ToyotaShipmentStatus = "confirmed";
                 order.ToyotaShipmentSubmittedAt = completionTime;
                 order.ShipmentLoadedAt = completionTime;
+                order.UpdatedBy = request.UserId.ToString();
                 order.UpdatedAt = completionTime;
 
                 shippedOrderNumbers.Add(order.RealOrderNumber);
@@ -1214,6 +1221,7 @@ public class ShipmentLoadService : IShipmentLoadService
                 order.ToyotaShipmentStatus = null;
                 order.ToyotaShipmentErrorMessage = null;
                 order.ToyotaShipmentSubmittedAt = null;
+                order.UpdatedBy = Guid.Empty.ToString(); // System-initiated restart
             }
 
             if (orders.Any())
@@ -1225,6 +1233,7 @@ public class ShipmentLoadService : IShipmentLoadService
             // 7. Mark session as "cancelled" (keep for audit trail)
             session.Status = "cancelled";
             session.CompletedAt = DateTime.Now;
+            session.UpdatedBy = Guid.Empty.ToString(); // System-initiated restart
             await _repository.UpdateSessionAsync(session);
             _logger.LogInformation("[SHIPMENT LOAD RESTART] Session {SessionId} marked as cancelled", sessionId);
 

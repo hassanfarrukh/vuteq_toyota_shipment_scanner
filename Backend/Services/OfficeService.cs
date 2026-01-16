@@ -1,5 +1,6 @@
 // Author: Hassan
 // Date: 2025-11-24
+// Updated: 2026-01-16 - Added audit field assignments (Hassan)
 // Description: Service for Office management - handles business logic
 
 using Backend.Models;
@@ -16,8 +17,8 @@ public interface IOfficeService
 {
     Task<ApiResponse<IEnumerable<OfficeDto>>> GetAllOfficesAsync();
     Task<ApiResponse<OfficeDto>> GetOfficeByIdAsync(Guid officeId);
-    Task<ApiResponse<OfficeDto>> CreateOfficeAsync(CreateOfficeRequest request);
-    Task<ApiResponse<OfficeDto>> UpdateOfficeAsync(Guid officeId, UpdateOfficeRequest request);
+    Task<ApiResponse<OfficeDto>> CreateOfficeAsync(CreateOfficeRequest request, Guid userId);
+    Task<ApiResponse<OfficeDto>> UpdateOfficeAsync(Guid officeId, UpdateOfficeRequest request, Guid userId);
     Task<ApiResponse<bool>> DeleteOfficeAsync(Guid officeId);
 }
 
@@ -94,7 +95,7 @@ public class OfficeService : IOfficeService
     /// <summary>
     /// Create a new office
     /// </summary>
-    public async Task<ApiResponse<OfficeDto>> CreateOfficeAsync(CreateOfficeRequest request)
+    public async Task<ApiResponse<OfficeDto>> CreateOfficeAsync(CreateOfficeRequest request, Guid userId)
     {
         try
         {
@@ -120,6 +121,7 @@ public class OfficeService : IOfficeService
                 Contact = request.Contact,
                 Email = request.Email,
                 IsActive = true,
+                CreatedBy = userId.ToString(),
                 CreatedAt = DateTime.Now
             };
 
@@ -145,7 +147,7 @@ public class OfficeService : IOfficeService
     /// <summary>
     /// Update an existing office
     /// </summary>
-    public async Task<ApiResponse<OfficeDto>> UpdateOfficeAsync(Guid officeId, UpdateOfficeRequest request)
+    public async Task<ApiResponse<OfficeDto>> UpdateOfficeAsync(Guid officeId, UpdateOfficeRequest request, Guid userId)
     {
         try
         {
@@ -167,6 +169,7 @@ public class OfficeService : IOfficeService
             office.Phone = request.Phone;
             office.Contact = request.Contact;
             office.Email = request.Email;
+            office.UpdatedBy = userId.ToString();
             office.UpdatedAt = DateTime.Now;
 
             var updatedOffice = await _officeRepository.UpdateAsync(office);
