@@ -1,6 +1,7 @@
 // Author: Hassan
-// Date: 2025-12-14
+// Date: 2026-01-16
 // Description: Service for Toyota SCS API integration (OAuth + Skid Build + Shipment Load)
+// Updated: 2026-01-16 - Added 401 token expiration retry logic
 
 using System.Net.Http.Headers;
 using System.Text;
@@ -20,6 +21,7 @@ public interface IToyotaApiService
     Task<ToyotaApiResponse> SubmitSkidBuildAsync(string environment, List<ToyotaSkidBuildRequest> requests);
     Task<ToyotaApiResponse> SubmitShipmentLoadAsync(string environment, ToyotaShipmentLoadRequest request);
     (string TokenPreview, DateTime ExpiresAt, bool IsValid)? GetCachedTokenInfo(string environment);
+    void ClearCachedToken(string environment);
 }
 
 /// <summary>
@@ -68,6 +70,37 @@ public class ToyotaApiService : IToyotaApiService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Clear cached token for a specific environment
+    /// Used when token expires or becomes invalid
+    /// </summary>
+    /// <param name="environment">Environment name (Dev, QA, Prod)</param>
+    public void ClearCachedToken(string environment)
+    {
+        lock (_cacheLock)
+        {
+            if (_tokenCache.Remove(environment))
+            {
+                _logger.LogWarning("Cleared cached token for environment: {Environment}", environment);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Check if the response indicates a 401 token expiration error
+    /// Toyota returns: {"httpCode":"401","httpMessage":"Token Exipred","moreInformation":"Token Exipred"}
+    /// Note: Toyota has a typo - "Exipred" instead of "Expired"
+    /// </summary>
+    private bool IsTokenExpiredResponse(ToyotaApiResponse response)
+    {
+        if (response.Code != 401)
+            return false;
+
+        // Check for Toyota's typo "Exipred" or correct spelling "Expired"
+        var errorMessage = response.ErrorMessage?.ToLower() ?? "";
+        return errorMessage.Contains("exipred") || errorMessage.Contains("expired") || errorMessage.Contains("token");
     }
 
     /// <summary>
@@ -178,17 +211,48 @@ public class ToyotaApiService : IToyotaApiService
     /// <summary>
     /// Submit Skid Build to Toyota API
     /// POST {baseUrl}/skid
+    /// Automatically retries once if 401 token expiration error is received
     /// </summary>
     /// <param name="environment">Environment name (Dev, QA, Prod)</param>
     /// <param name="requests">List of skid build requests (one per order)</param>
     /// <returns>Toyota API response with confirmation number or error</returns>
     public async Task<ToyotaApiResponse> SubmitSkidBuildAsync(string environment, List<ToyotaSkidBuildRequest> requests)
     {
+        _logger.LogInformation("Submitting Skid Build to Toyota API - Environment: {Environment}, Orders: {OrderCount}",
+            environment, requests.Count);
+
+        // First attempt
+        var response = await SubmitSkidBuildInternalAsync(environment, requests);
+
+        // Check if token expired (401 response)
+        if (IsTokenExpiredResponse(response))
+        {
+            _logger.LogWarning("Toyota API returned 401 Token Expired - clearing cache and retrying with fresh token");
+
+            // Clear cached token and retry once
+            ClearCachedToken(environment);
+            response = await SubmitSkidBuildInternalAsync(environment, requests);
+
+            if (IsTokenExpiredResponse(response))
+            {
+                _logger.LogError("Toyota API still returning 401 after token refresh - authentication may be invalid");
+            }
+            else if (response.Success)
+            {
+                _logger.LogInformation("Retry with fresh token succeeded for Skid Build");
+            }
+        }
+
+        return response;
+    }
+
+    /// <summary>
+    /// Internal method to submit Skid Build to Toyota API (without retry logic)
+    /// </summary>
+    private async Task<ToyotaApiResponse> SubmitSkidBuildInternalAsync(string environment, List<ToyotaSkidBuildRequest> requests)
+    {
         try
         {
-            _logger.LogInformation("Submitting Skid Build to Toyota API - Environment: {Environment}, Orders: {OrderCount}",
-                environment, requests.Count);
-
             // Get access token
             var token = await GetAccessTokenAsync(environment);
             if (string.IsNullOrEmpty(token))
@@ -261,6 +325,41 @@ public class ToyotaApiService : IToyotaApiService
                 };
             }
 
+            // CRITICAL FIX: Toyota returns different JSON structure for 401 errors
+            // Success: {"code": 200, "messages": [], ...}
+            // 401 Error: {"httpCode": "401", "httpMessage": "Token Exipred", "moreInformation": "..."}
+            // When deserialized, apiResponse.Code will be 0 for 401 errors
+            // Solution: Check HTTP status code and manually set Code field
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _logger.LogWarning("Detected HTTP 401 Unauthorized response - manually setting Code to 401");
+                apiResponse.Code = 401;
+
+                // Extract error message from Toyota's 401 format if available
+                if (apiResponse.Messages == null || apiResponse.Messages.Count == 0)
+                {
+                    try
+                    {
+                        var errorJson = JsonSerializer.Deserialize<JsonElement>(responseBody);
+                        if (errorJson.TryGetProperty("httpMessage", out var httpMessage))
+                        {
+                            apiResponse.Messages = new List<ToyotaApiMessage>
+                            {
+                                new() { Type = "Error", Message = new List<string> { httpMessage.GetString() ?? "Unauthorized" } }
+                            };
+                        }
+                    }
+                    catch
+                    {
+                        // Fallback if parsing fails
+                        apiResponse.Messages = new List<ToyotaApiMessage>
+                        {
+                            new() { Type = "Error", Message = new List<string> { "Token Expired" } }
+                        };
+                    }
+                }
+            }
+
             return apiResponse;
         }
         catch (Exception ex)
@@ -280,17 +379,48 @@ public class ToyotaApiService : IToyotaApiService
     /// <summary>
     /// Submit Shipment Load to Toyota API
     /// POST {baseUrl}/trailer
+    /// Automatically retries once if 401 token expiration error is received
     /// </summary>
     /// <param name="environment">Environment name (Dev, QA, Prod)</param>
     /// <param name="request">Shipment load request with trailer and orders</param>
     /// <returns>Toyota API response with confirmation number or error</returns>
     public async Task<ToyotaApiResponse> SubmitShipmentLoadAsync(string environment, ToyotaShipmentLoadRequest request)
     {
+        _logger.LogInformation("Submitting Shipment Load to Toyota API - Environment: {Environment}, Trailer: {Trailer}, Orders: {OrderCount}",
+            environment, request.TrailerNumber, request.Orders.Count);
+
+        // First attempt
+        var response = await SubmitShipmentLoadInternalAsync(environment, request);
+
+        // Check if token expired (401 response)
+        if (IsTokenExpiredResponse(response))
+        {
+            _logger.LogWarning("Toyota API returned 401 Token Expired - clearing cache and retrying with fresh token");
+
+            // Clear cached token and retry once
+            ClearCachedToken(environment);
+            response = await SubmitShipmentLoadInternalAsync(environment, request);
+
+            if (IsTokenExpiredResponse(response))
+            {
+                _logger.LogError("Toyota API still returning 401 after token refresh - authentication may be invalid");
+            }
+            else if (response.Success)
+            {
+                _logger.LogInformation("Retry with fresh token succeeded for Shipment Load");
+            }
+        }
+
+        return response;
+    }
+
+    /// <summary>
+    /// Internal method to submit Shipment Load to Toyota API (without retry logic)
+    /// </summary>
+    private async Task<ToyotaApiResponse> SubmitShipmentLoadInternalAsync(string environment, ToyotaShipmentLoadRequest request)
+    {
         try
         {
-            _logger.LogInformation("Submitting Shipment Load to Toyota API - Environment: {Environment}, Trailer: {Trailer}, Orders: {OrderCount}",
-                environment, request.TrailerNumber, request.Orders.Count);
-
             // Get access token
             var token = await GetAccessTokenAsync(environment);
             if (string.IsNullOrEmpty(token))
@@ -361,6 +491,41 @@ public class ToyotaApiService : IToyotaApiService
                         new() { Type = "Error", Message = new List<string> { "Failed to parse Toyota API response" } }
                     }
                 };
+            }
+
+            // CRITICAL FIX: Toyota returns different JSON structure for 401 errors
+            // Success: {"code": 200, "messages": [], ...}
+            // 401 Error: {"httpCode": "401", "httpMessage": "Token Exipred", "moreInformation": "..."}
+            // When deserialized, apiResponse.Code will be 0 for 401 errors
+            // Solution: Check HTTP status code and manually set Code field
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _logger.LogWarning("Detected HTTP 401 Unauthorized response - manually setting Code to 401");
+                apiResponse.Code = 401;
+
+                // Extract error message from Toyota's 401 format if available
+                if (apiResponse.Messages == null || apiResponse.Messages.Count == 0)
+                {
+                    try
+                    {
+                        var errorJson = JsonSerializer.Deserialize<JsonElement>(responseBody);
+                        if (errorJson.TryGetProperty("httpMessage", out var httpMessage))
+                        {
+                            apiResponse.Messages = new List<ToyotaApiMessage>
+                            {
+                                new() { Type = "Error", Message = new List<string> { httpMessage.GetString() ?? "Unauthorized" } }
+                            };
+                        }
+                    }
+                    catch
+                    {
+                        // Fallback if parsing fails
+                        apiResponse.Messages = new List<ToyotaApiMessage>
+                        {
+                            new() { Type = "Error", Message = new List<string> { "Token Expired" } }
+                        };
+                    }
+                }
             }
 
             return apiResponse;
